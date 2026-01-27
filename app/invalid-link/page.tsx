@@ -17,12 +17,3 @@ export default function InvalidLink() {
     </main>
   );
 }
-```
-
----
-
-**After saving all 5 files**, run:
-```
-git add .
-git commit -m "Fix cookie auth for Next.js 14"
-git push
