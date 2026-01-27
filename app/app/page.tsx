@@ -188,7 +188,7 @@ export default function MenteeApp() {
     return true;
   });
 
-  const categories = [...new Set(quests.map(q => q.category))];
+  const categories = Array.from(new Set(quests.map(q => q.category)));
 
   if (loading) {
     return (
