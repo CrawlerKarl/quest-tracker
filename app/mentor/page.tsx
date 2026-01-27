@@ -227,7 +227,7 @@ export default function MentorDashboard() {
   }
 
   // Get categories from existing quests
-  const categories = [...new Set(quests.map(q => q.category))];
+  const categories = Array.from(new Set(quests.map(q => q.category)));
 
   if (loading) {
     return (
