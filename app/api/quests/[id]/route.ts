@@ -69,6 +69,31 @@ export async function PUT(
   try {
     const body = await request.json();
     
+    // Handle simple lock toggle
+    if (body.toggleLock !== undefined) {
+      const result = await sql`
+        UPDATE quests 
+        SET is_locked = NOT is_locked,
+            updated_at = NOW()
+        WHERE id = ${questId}
+        RETURNING *
+      `;
+      return NextResponse.json({ quest: result.rows[0] });
+    }
+
+    // Handle setting unlock requirements
+    if (body.setUnlocksAfter !== undefined) {
+      const unlocksAfter = JSON.stringify(body.setUnlocksAfter || []);
+      const result = await sql`
+        UPDATE quests 
+        SET unlocks_after = ${unlocksAfter},
+            updated_at = NOW()
+        WHERE id = ${questId}
+        RETURNING *
+      `;
+      return NextResponse.json({ quest: result.rows[0] });
+    }
+    
     const title = sanitizeText(body.title, 255);
     const description = sanitizeText(body.description, 2000);
     const category = sanitizeText(body.category, 100);
@@ -81,6 +106,8 @@ export async function PUT(
     const safetyNotes = sanitizeText(body.safetyNotes || '', 1000);
     const evidenceExamples = JSON.stringify(sanitizeStringArray(body.evidenceExamples || [], 10, 500));
     const isActive = body.isActive !== false;
+    const isLocked = body.isLocked === true;
+    const unlocksAfter = JSON.stringify(body.unlocksAfter || []);
 
     const result = await sql`
       UPDATE quests 
@@ -94,6 +121,8 @@ export async function PUT(
           safety_notes = ${safetyNotes}, 
           evidence_examples = ${evidenceExamples},
           is_active = ${isActive},
+          is_locked = ${isLocked},
+          unlocks_after = ${unlocksAfter},
           updated_at = NOW()
       WHERE id = ${questId}
       RETURNING *

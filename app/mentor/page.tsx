@@ -26,6 +26,12 @@ interface Quest {
   safety_notes: string;
   evidenceExamples: string[];
   is_active: boolean;
+  is_locked: boolean;
+  unlocksAfter: number[];
+  sort_order: number;
+  progress: {
+    status: string;
+  } | null;
 }
 
 interface Stats {
@@ -67,6 +73,8 @@ export default function MentorDashboard() {
     whyItMatters: '',
     safetyNotes: '',
     evidenceExamples: [''],
+    isLocked: true,
+    unlocksAfter: [] as number[],
   });
   const [saving, setSaving] = useState(false);
 
@@ -128,11 +136,27 @@ export default function MentorDashboard() {
     }
   }
 
+  async function handleToggleLock(questId: number) {
+    try {
+      const res = await fetch(`/api/quests/${questId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toggleLock: true }),
+      });
+
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Failed to toggle lock:', error);
+    }
+  }
+
   async function handleSaveQuest() {
     setSaving(true);
     try {
-      const url = editingQuest ? `/api/quests/${editingQuest.id}` : '/api/quests';
-      const method = editingQuest ? 'PUT' : 'POST';
+      const url = editingQuest?.id ? `/api/quests/${editingQuest.id}` : '/api/quests';
+      const method = editingQuest?.id ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
         method,
@@ -170,6 +194,8 @@ export default function MentorDashboard() {
       whyItMatters: '',
       safetyNotes: '',
       evidenceExamples: [''],
+      isLocked: true,
+      unlocksAfter: [],
     });
   }
 
@@ -185,7 +211,9 @@ export default function MentorDashboard() {
         steps: quest.steps.length > 0 ? quest.steps : [''],
         whyItMatters: quest.why_it_matters || '',
         safetyNotes: quest.safety_notes || '',
-        evidenceExamples: quest.evidenceExamples.length > 0 ? quest.evidenceExamples : [''],
+        evidenceExamples: quest.evidenceExamples?.length > 0 ? quest.evidenceExamples : [''],
+        isLocked: quest.is_locked || false,
+        unlocksAfter: quest.unlocksAfter || [],
       });
     } else {
       setEditingQuest({} as Quest); // New quest marker
@@ -226,8 +254,25 @@ export default function MentorDashboard() {
     return labels[activity.action] || activity.action;
   }
 
+  function getQuestStatusBadge(quest: Quest) {
+    if (quest.progress?.status === 'completed') {
+      return <span className="badge badge-completed">✓ Done</span>;
+    }
+    if (quest.progress?.status === 'submitted') {
+      return <span className="badge badge-submitted">Pending</span>;
+    }
+    if (quest.progress?.status === 'in_progress') {
+      return <span className="badge badge-in-progress">Active</span>;
+    }
+    return null;
+  }
+
   // Get categories from existing quests
   const categories = Array.from(new Set(quests.map(q => q.category)));
+  
+  // Count locked/unlocked
+  const lockedCount = quests.filter(q => q.is_locked).length;
+  const unlockedCount = quests.filter(q => !q.is_locked).length;
 
   if (loading) {
     return (
@@ -274,12 +319,12 @@ export default function MentorDashboard() {
             <div className="hud-stat-label">Total XP Earned</div>
           </div>
           <div className="hud-stat">
-            <div className="hud-stat-value">{stats?.questsCompleted || 0}</div>
-            <div className="hud-stat-label">Quests Completed</div>
+            <div className="hud-stat-value" style={{ color: 'var(--accent-green)' }}>{unlockedCount}</div>
+            <div className="hud-stat-label">Unlocked Quests</div>
           </div>
           <div className="hud-stat">
-            <div className="hud-stat-value">{quests.length}</div>
-            <div className="hud-stat-label">Total Quests</div>
+            <div className="hud-stat-value" style={{ color: 'var(--text-muted)' }}>{lockedCount}</div>
+            <div className="hud-stat-label">Locked Quests</div>
           </div>
         </div>
 
@@ -362,26 +407,65 @@ export default function MentorDashboard() {
         {/* Quests Tab */}
         {activeTab === 'quests' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                🔓 {unlockedCount} unlocked • 🔒 {lockedCount} locked
+              </div>
               <button className="btn btn-primary" onClick={() => openQuestEditor()}>
                 + New Quest
               </button>
             </div>
+            
+            <div className="alert alert-info" style={{ marginBottom: '1.5rem' }}>
+              <span>💡</span>
+              <div>
+                <strong>Quest Locking</strong>
+                <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  Locked quests are hidden from your mentee. Click the lock icon to toggle. 
+                  You can also set quests to auto-unlock when prerequisites are completed.
+                </p>
+              </div>
+            </div>
+
             <div className="table-container">
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: '50px' }}>Lock</th>
                     <th>Quest</th>
                     <th>Category</th>
                     <th>Difficulty</th>
                     <th>XP</th>
+                    <th>Status</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quests.map(quest => (
-                    <tr key={quest.id}>
-                      <td style={{ fontWeight: '500' }}>{quest.title}</td>
+                    <tr key={quest.id} style={{ opacity: quest.is_locked ? 0.7 : 1 }}>
+                      <td>
+                        <button 
+                          onClick={() => handleToggleLock(quest.id)}
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            cursor: 'pointer', 
+                            fontSize: '1.25rem',
+                            padding: '0.25rem'
+                          }}
+                          title={quest.is_locked ? 'Click to unlock' : 'Click to lock'}
+                        >
+                          {quest.is_locked ? '🔒' : '🔓'}
+                        </button>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '500' }}>{quest.title}</div>
+                        {quest.unlocksAfter && quest.unlocksAfter.length > 0 && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Unlocks after: Quest {quest.unlocksAfter.join(', ')}
+                          </div>
+                        )}
+                      </td>
                       <td>{quest.category}</td>
                       <td>
                         <span className={`badge badge-${quest.difficulty}`}>
@@ -389,6 +473,7 @@ export default function MentorDashboard() {
                         </span>
                       </td>
                       <td style={{ color: 'var(--accent-gold)' }}>+{quest.xp_reward}</td>
+                      <td>{getQuestStatusBadge(quest)}</td>
                       <td>
                         <button 
                           className="btn btn-ghost btn-small"
@@ -574,6 +659,46 @@ export default function MentorDashboard() {
                     value={questForm.xpReward}
                     onChange={e => setQuestForm({ ...questForm, xpReward: parseInt(e.target.value) || 100 })}
                   />
+                </div>
+              </div>
+
+              {/* Locking Controls */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="form-group">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={questForm.isLocked}
+                      onChange={e => setQuestForm({ ...questForm, isLocked: e.target.checked })}
+                      style={{ width: 'auto' }}
+                    />
+                    🔒 Quest is Locked
+                  </label>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    Locked quests are hidden from your mentee
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label>Auto-unlock after completing quest(s):</label>
+                  <select
+                    multiple
+                    value={questForm.unlocksAfter.map(String)}
+                    onChange={e => {
+                      const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                      setQuestForm({ ...questForm, unlocksAfter: selected });
+                    }}
+                    style={{ minHeight: '80px' }}
+                  >
+                    {quests.filter(q => q.id !== editingQuest.id).map(q => (
+                      <option key={q.id} value={q.id}>
+                        #{q.id}: {q.title}
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    Hold Ctrl/Cmd to select multiple
+                  </p>
                 </div>
               </div>
 

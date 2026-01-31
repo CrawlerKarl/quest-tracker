@@ -27,15 +27,41 @@ export async function GET() {
       progressResult.rows.map(p => [p.quest_id, p])
     );
 
-    const quests = questsResult.rows.map(quest => ({
+    // Get completed quest IDs for unlock checking
+    const completedQuestIds = progressResult.rows
+      .filter(p => p.status === 'completed')
+      .map(p => p.quest_id);
+
+    const allQuests = questsResult.rows.map(quest => ({
       ...quest,
       steps: JSON.parse(quest.steps || '[]'),
       evidenceExamples: JSON.parse(quest.evidence_examples || '[]'),
       prerequisites: JSON.parse(quest.prerequisites || '[]'),
+      unlocksAfter: JSON.parse(quest.unlocks_after || '[]'),
       progress: progressMap.get(quest.id) || null,
     }));
 
-    return NextResponse.json({ quests });
+    // For mentee: filter out locked quests (unless auto-unlocked by completing prerequisites)
+    let quests = allQuests;
+    if (role === 'mentee') {
+      quests = allQuests.filter(quest => {
+        // If not locked, show it
+        if (!quest.is_locked) return true;
+        
+        // If locked, check if prerequisites are met (all quests in unlocks_after are completed)
+        const unlocksAfter = quest.unlocksAfter || [];
+        if (unlocksAfter.length === 0) return false; // Locked with no unlock path
+        
+        // Check if ALL required quests are completed
+        const allPrereqsCompleted = unlocksAfter.every((reqId: number) => 
+          completedQuestIds.includes(reqId)
+        );
+        
+        return allPrereqsCompleted;
+      });
+    }
+
+    return NextResponse.json({ quests, role });
   } catch (error) {
     console.error('Error fetching quests:', error);
     return NextResponse.json({ error: 'Failed to fetch quests' }, { status: 500 });
@@ -64,14 +90,16 @@ export async function POST(request: Request) {
     const whyItMatters = sanitizeText(body.whyItMatters || '', 1000);
     const safetyNotes = sanitizeText(body.safetyNotes || '', 1000);
     const evidenceExamples = JSON.stringify(sanitizeStringArray(body.evidenceExamples || [], 10, 500));
+    const isLocked = body.isLocked !== false; // Default to locked for new quests
+    const unlocksAfter = JSON.stringify(body.unlocksAfter || []);
     
     // Get next sort order
     const maxOrderResult = await sql`SELECT MAX(sort_order) as max_order FROM quests`;
     const sortOrder = (maxOrderResult.rows[0]?.max_order || 0) + 1;
 
     const result = await sql`
-      INSERT INTO quests (title, description, category, difficulty, xp_reward, steps, why_it_matters, safety_notes, evidence_examples, sort_order)
-      VALUES (${title}, ${description}, ${category}, ${difficulty}, ${xpReward}, ${steps}, ${whyItMatters}, ${safetyNotes}, ${evidenceExamples}, ${sortOrder})
+      INSERT INTO quests (title, description, category, difficulty, xp_reward, steps, why_it_matters, safety_notes, evidence_examples, sort_order, is_locked, unlocks_after)
+      VALUES (${title}, ${description}, ${category}, ${difficulty}, ${xpReward}, ${steps}, ${whyItMatters}, ${safetyNotes}, ${evidenceExamples}, ${sortOrder}, ${isLocked}, ${unlocksAfter})
       RETURNING *
     `;
 
