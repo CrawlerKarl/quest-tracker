@@ -40,7 +40,7 @@ interface Stats {
   questsCompleted: number;
 }
 
-interface Activity {
+interface 📜 History {
   id: number;
   action: string;
   quest_title: string;
@@ -48,12 +48,12 @@ interface Activity {
   created_at: string;
 }
 
-export default function MentorDashboard() {
+export default function GUIDEDashboard() {
   const [activeTab, setActiveTab] = useState<'review' | 'quests' | 'activity'>('review');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<📜 History[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Review state
@@ -78,8 +78,8 @@ export default function MentorDashboard() {
   });
   const [saving, setSaving] = useState(false);
 
-  // Mentee URL display
-  const [showMenteeUrl, setShowMenteeUrl] = useState(false);
+  // Hero URL display
+  const [showHeroUrl, setShowHeroUrl] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -230,7 +230,7 @@ export default function MentorDashboard() {
     });
   }
 
-  function getActivityIcon(action: string): string {
+  function get📜 HistoryIcon(action: string): string {
     const icons: Record<string, string> = {
       quest_started: '🚀',
       quest_submitted: '📤',
@@ -242,7 +242,7 @@ export default function MentorDashboard() {
     return icons[action] || '📋';
   }
 
-  function getActivityLabel(activity: Activity): string {
+  function get📜 HistoryLabel(activity: 📜 History): string {
     const labels: Record<string, string> = {
       quest_started: `Started: ${activity.quest_title}`,
       quest_submitted: `Submitted: ${activity.quest_title}`,
@@ -288,19 +288,19 @@ export default function MentorDashboard() {
       <header className="header">
         <div className="container header-content">
           <div className="logo">
-            🎮 Quest Tracker <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>Mentor</span>
+            🎮 CyberQuest <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>GUIDE</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button 
               className="btn btn-ghost btn-small"
-              onClick={() => setShowMenteeUrl(true)}
+              onClick={() => setShowHeroUrl(true)}
             >
-              📋 Get Mentee Link
+              📋 Get Hero Link
             </button>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontWeight: '600' }}>Level {stats?.level || 1}</div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {stats?.questsCompleted || 0} quests completed
+                {stats?.questsCompleted || 0} wins
               </div>
             </div>
           </div>
@@ -312,7 +312,7 @@ export default function MentorDashboard() {
         <div className="hud" style={{ marginBottom: '2rem' }}>
           <div className="hud-stat">
             <div className="hud-stat-value" style={{ color: 'var(--accent-gold)' }}>{submissions.length}</div>
-            <div className="hud-stat-label">Pending Reviews</div>
+            <div className="hud-stat-label">Inbox</div>
           </div>
           <div className="hud-stat">
             <div className="hud-stat-value">{stats?.totalXp || 0}</div>
@@ -334,19 +334,19 @@ export default function MentorDashboard() {
             className={`tab ${activeTab === 'review' ? 'active' : ''}`}
             onClick={() => setActiveTab('review')}
           >
-            Review Queue {submissions.length > 0 && `(${submissions.length})`}
+            📥 Inbox {submissions.length > 0 && `(${submissions.length})`}
           </button>
           <button 
             className={`tab ${activeTab === 'quests' ? 'active' : ''}`}
             onClick={() => setActiveTab('quests')}
           >
-            Manage Quests
+            ⚔️ Quests
           </button>
           <button 
             className={`tab ${activeTab === 'activity' ? 'active' : ''}`}
             onClick={() => setActiveTab('activity')}
           >
-            Activity
+            📜 History
           </button>
         </div>
 
@@ -357,7 +357,7 @@ export default function MentorDashboard() {
               <div className="empty-state">
                 <div className="empty-state-icon">✅</div>
                 <p>No submissions to review</p>
-                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Check back when your mentee submits evidence</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Check back when your hero submits evidence</p>
               </div>
             ) : (
               <div className="table-container">
@@ -421,7 +421,7 @@ export default function MentorDashboard() {
               <div>
                 <strong>Quest Locking</strong>
                 <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                  Locked quests are hidden from your mentee. Click the lock icon to toggle. 
+                  Locked quests are hidden from your hero. Click the lock icon to toggle. 
                   You can also set quests to auto-unlock when prerequisites are completed.
                 </p>
               </div>
@@ -490,7 +490,7 @@ export default function MentorDashboard() {
           </div>
         )}
 
-        {/* Activity Tab */}
+        {/* 📜 History Tab */}
         {activeTab === 'activity' && (
           <div>
             {activities.length === 0 ? (
@@ -502,9 +502,9 @@ export default function MentorDashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {activities.map(activity => (
                   <div key={activity.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem' }}>
-                    <div style={{ fontSize: '1.5rem' }}>{getActivityIcon(activity.action)}</div>
+                    <div style={{ fontSize: '1.5rem' }}>{get📜 HistoryIcon(activity.action)}</div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '500' }}>{getActivityLabel(activity)}</div>
+                      <div style={{ fontWeight: '500' }}>{get📜 HistoryLabel(activity)}</div>
                       <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                         {formatDate(activity.created_at)}
                       </div>
@@ -675,7 +675,7 @@ export default function MentorDashboard() {
                     🔒 Quest is Locked
                   </label>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                    Locked quests are hidden from your mentee
+                    Locked quests are hidden from your hero
                   </p>
                 </div>
 
@@ -812,17 +812,17 @@ export default function MentorDashboard() {
         </div>
       )}
 
-      {/* Mentee URL Modal */}
-      {showMenteeUrl && (
-        <div className="modal-overlay" onClick={() => setShowMenteeUrl(false)}>
+      {/* Hero URL Modal */}
+      {showHeroUrl && (
+        <div className="modal-overlay" onClick={() => setShowHeroUrl(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h2 className="modal-title">Share with Your Mentee</h2>
-              <button className="modal-close" onClick={() => setShowMenteeUrl(false)}>×</button>
+              <h2 className="modal-title">Share with Your Hero</h2>
+              <button className="modal-close" onClick={() => setShowHeroUrl(false)}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
-                Share this link with your mentee. They'll use it to access their quest board.
+                Share this link with your hero. They'll use it to access their quest board.
               </p>
               
               <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
@@ -844,16 +844,16 @@ export default function MentorDashboard() {
                 fontSize: '0.85rem'
               }}>
                 {typeof window !== 'undefined' && (
-                  `${window.location.origin}/enter/mentee/[MENTEE_TOKEN]`
+                  `${window.location.origin}/enter/hero/[MENTEE_TOKEN]`
                 )}
               </div>
 
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
-                Replace [MENTEE_TOKEN] with your actual mentee token from your environment variables.
+                Replace [MENTEE_TOKEN] with your actual hero token from your environment variables.
               </p>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => setShowMenteeUrl(false)}>
+              <button className="btn btn-primary" onClick={() => setShowHeroUrl(false)}>
                 Done
               </button>
             </div>
