@@ -34,6 +34,7 @@ export async function GET() {
 
     const allQuests = questsResult.rows.map(quest => ({
       ...quest,
+      is_locked: quest.is_locked || false,
       steps: JSON.parse(quest.steps || '[]'),
       evidenceExamples: JSON.parse(quest.evidence_examples || '[]'),
       prerequisites: JSON.parse(quest.prerequisites || '[]'),
