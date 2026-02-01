@@ -50,24 +50,21 @@ interface Badge {
 }
 
 // Rank system
-function getRank(xp: number): { name: string; icon: string; class: string } {
-  if (xp >= 5000) return { name: 'LEGEND', icon: '👑', class: 'rank-legend' };
-  if (xp >= 3000) return { name: 'ELITE', icon: '💎', class: 'rank-elite' };
-  if (xp >= 1500) return { name: 'PRO', icon: '🔥', class: 'rank-pro' };
-  if (xp >= 500) return { name: 'APPRENTICE', icon: '⚡', class: 'rank-apprentice' };
-  return { name: 'ROOKIE', icon: '🌱', class: 'rank-rookie' };
+function getRank(xp: number): { name: string; icon: string; color: string } {
+  if (xp >= 5000) return { name: 'LEGEND', icon: '👑', color: '#ffd700' };
+  if (xp >= 3000) return { name: 'ELITE', icon: '💎', color: '#ff0080' };
+  if (xp >= 1500) return { name: 'PRO', icon: '🔥', color: '#ff9500' };
+  if (xp >= 500) return { name: 'APPRENTICE', icon: '⚡', color: '#00d4ff' };
+  return { name: 'ROOKIE', icon: '🌱', color: '#9898a8' };
 }
 
-// Difficulty to stars
-function DifficultyStars({ difficulty }: { difficulty: string }) {
-  const stars = difficulty === 'beginner' ? 1 : difficulty === 'intermediate' ? 2 : 3;
-  return (
-    <div className="difficulty-stars" title={difficulty}>
-      {[1, 2, 3].map(i => (
-        <span key={i} className={`star ${i <= stars ? 'filled' : ''}`}>★</span>
-      ))}
-    </div>
-  );
+// Get next rank info
+function getNextRank(xp: number): { name: string; xpNeeded: number } | null {
+  if (xp >= 5000) return null; // Already legend
+  if (xp >= 3000) return { name: 'LEGEND', xpNeeded: 5000 - xp };
+  if (xp >= 1500) return { name: 'ELITE', xpNeeded: 3000 - xp };
+  if (xp >= 500) return { name: 'PRO', xpNeeded: 1500 - xp };
+  return { name: 'APPRENTICE', xpNeeded: 500 - xp };
 }
 
 export default function HeroApp() {
@@ -133,7 +130,7 @@ export default function HeroApp() {
       });
 
       if (res.ok) {
-        setToast({ message: '🚀 Quest started! Let\'s go!' });
+        setToast({ message: '🚀 Quest accepted! Let\'s go!' });
         fetchData();
         setSelectedQuest(null);
       }
@@ -162,7 +159,7 @@ export default function HeroApp() {
       });
 
       if (res.ok) {
-        setToast({ message: '📤 Proof sent! Waiting for your Guide...' });
+        setToast({ message: '📤 Proof sent to your Guide!' });
         setEvidenceLinks(['']);
         setReflection('');
         fetchData();
@@ -225,6 +222,12 @@ export default function HeroApp() {
     return icons[status] || '📋';
   }
 
+  function getDifficultyStars(difficulty: string): string {
+    if (difficulty === 'beginner') return '⭐';
+    if (difficulty === 'intermediate') return '⭐⭐';
+    return '⭐⭐⭐';
+  }
+
   const filteredQuests = quests.filter(quest => {
     const status = getQuestStatus(quest);
     if (filter !== 'all' && status !== filter) return false;
@@ -233,6 +236,7 @@ export default function HeroApp() {
   });
 
   const rank = getRank(stats?.totalXp || 0);
+  const nextRank = getNextRank(stats?.totalXp || 0);
 
   if (loading) {
     return (
@@ -247,9 +251,23 @@ export default function HeroApp() {
     <div>
       {/* Toast Notification */}
       {toast && (
-        <div className="toast toast-success">
-          <span>{toast.message}</span>
-          {toast.xp && <span className="toast-xp">+{toast.xp} XP</span>}
+        <div style={{
+          position: 'fixed',
+          top: '100px',
+          right: '20px',
+          padding: '1rem 1.5rem',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--neon-green)',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          boxShadow: '0 0 30px rgba(0, 255, 136, 0.3)',
+          zIndex: 2000,
+          animation: 'slideIn 0.3s ease'
+        }}>
+          <span style={{ color: 'var(--neon-green)' }}>{toast.message}</span>
+          {toast.xp && <span style={{ fontFamily: 'Orbitron, sans-serif', color: 'var(--neon-orange)' }}>+{toast.xp} XP</span>}
         </div>
       )}
 
@@ -257,58 +275,160 @@ export default function HeroApp() {
       <header className="header">
         <div className="container header-content">
           <div className="logo">
-            <span className="logo-icon">⚡</span>
-            <span>CyberQuest</span>
+            <span style={{ fontSize: '1.8rem' }}>⚡</span>
+            <span style={{ fontFamily: 'Orbitron, sans-serif', color: 'var(--neon-cyan)', textShadow: '0 0 10px var(--neon-cyan)' }}>CyberQuest</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className={`rank-badge ${rank.class}`}>
-              {rank.icon} {rank.name}
-            </div>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            background: 'var(--bg-elevated)',
+            borderRadius: '8px',
+            border: `2px solid ${rank.color}`,
+            boxShadow: `0 0 10px ${rank.color}40`
+          }}>
+            <span>{rank.icon}</span>
+            <span style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 700, color: rank.color }}>{rank.name}</span>
           </div>
         </div>
       </header>
 
       <main className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
         {/* Hero Section */}
-        <div className="hero-section">
-          <div className="hero-content">
-            <div className="hero-avatar">🦸</div>
-            <div className="hero-info">
-              <div className="hero-rank">{rank.icon} {rank.name}</div>
-              <div className="hero-level">LEVEL {stats?.level || 1}</div>
-              
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(255, 0, 128, 0.1))',
+          border: '1px solid var(--border-color)',
+          borderRadius: '16px',
+          padding: '2rem',
+          marginBottom: '2rem',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Background glow effect */}
+          <div style={{
+            position: 'absolute',
+            top: '-50%',
+            left: '-50%',
+            width: '200%',
+            height: '200%',
+            background: 'radial-gradient(circle, rgba(0, 212, 255, 0.05) 0%, transparent 70%)',
+            pointerEvents: 'none'
+          }}></div>
+
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
+            {/* Avatar */}
+            <div style={{
+              width: '100px',
+              height: '100px',
+              background: `linear-gradient(135deg, var(--neon-cyan), var(--neon-pink))`,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '3rem',
+              boxShadow: '0 0 30px rgba(0, 212, 255, 0.4)',
+              border: '3px solid var(--neon-cyan)',
+              flexShrink: 0
+            }}>
+              🦸
+            </div>
+
+            {/* Level & XP Info */}
+            <div style={{ flex: 1, minWidth: '250px' }}>
+              <div style={{ 
+                fontFamily: 'Orbitron, sans-serif', 
+                fontSize: '0.9rem', 
+                color: 'var(--text-muted)', 
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                marginBottom: '0.25rem'
+              }}>
+                {rank.icon} {rank.name}
+              </div>
+              <div style={{
+                fontFamily: 'Orbitron, sans-serif',
+                fontSize: '2.5rem',
+                fontWeight: 900,
+                background: 'linear-gradient(90deg, var(--neon-cyan), var(--neon-pink))',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                lineHeight: 1
+              }}>
+                LEVEL {stats?.level || 1}
+              </div>
+
               {/* XP Progress Bar */}
-              <div className="xp-bar-container">
-                <div className="xp-bar">
-                  <div 
-                    className="xp-bar-fill" 
-                    style={{ width: `${xpProgress?.progress || 0}%` }}
-                  ></div>
-                  <div className="xp-bar-text">
+              <div style={{ marginTop: '1rem' }}>
+                <div style={{
+                  height: '16px',
+                  background: 'var(--bg-dark)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  border: '2px solid rgba(0, 212, 255, 0.5)',
+                  position: 'relative'
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${xpProgress?.progress || 0}%`,
+                    background: 'linear-gradient(90deg, var(--neon-cyan), var(--neon-green))',
+                    transition: 'width 0.5s ease',
+                    boxShadow: '0 0 15px var(--neon-cyan)',
+                    position: 'relative'
+                  }}>
+                    {/* Shimmer effect */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                      animation: 'shimmer 2s infinite'
+                    }}></div>
+                  </div>
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    color: 'white',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                    fontFamily: 'Orbitron, sans-serif'
+                  }}>
                     {xpProgress?.current || 0} / {xpProgress?.needed || 500} XP
                   </div>
                 </div>
-              </div>
-              
-              <div className="hero-xp-text">
-                {xpProgress && xpProgress.needed - xpProgress.current > 0 && (
-                  <span>{xpProgress.needed - xpProgress.current} XP until next level!</span>
+                {nextRank && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                    🎯 {nextRank.xpNeeded} XP until <span style={{ color: 'var(--neon-orange)', fontWeight: 600 }}>{nextRank.name}</span>
+                  </div>
                 )}
               </div>
             </div>
-            
-            <div className="hero-stats">
-              <div className="hero-stat">
-                <div className="hero-stat-value">{questCounts?.completed || 0}</div>
-                <div className="hero-stat-label">Wins</div>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.5rem', fontWeight: 700, color: 'var(--neon-green)' }}>
+                  {questCounts?.completed || 0}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Victories</div>
               </div>
-              <div className="hero-stat">
-                <div className="hero-stat-value">{stats?.totalXp || 0}</div>
-                <div className="hero-stat-label">Total XP</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.5rem', fontWeight: 700, color: 'var(--neon-orange)' }}>
+                  {stats?.totalXp || 0}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total XP</div>
               </div>
-              <div className="hero-stat">
-                <div className="hero-stat-value">{questCounts?.inProgress || 0}</div>
-                <div className="hero-stat-label">Active</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.5rem', fontWeight: 700, color: 'var(--neon-cyan)' }}>
+                  {questCounts?.inProgress || 0}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active</div>
               </div>
             </div>
           </div>
@@ -337,14 +457,23 @@ export default function HeroApp() {
         {/* Earned Badges */}
         {earnedBadges.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
-            <h2 style={{ fontFamily: 'Orbitron, sans-serif', marginBottom: '1rem', color: 'var(--neon-purple)' }}>
+            <h2 style={{ fontFamily: 'Orbitron, sans-serif', marginBottom: '1rem', color: 'var(--neon-purple)', fontSize: '1.1rem' }}>
               🏅 Achievements Unlocked
             </h2>
-            <div className="badges-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '1rem' }}>
               {earnedBadges.map(badge => (
-                <div key={badge.id} className="earned-badge">
-                  <div className="earned-badge-icon">{badge.icon}</div>
-                  <div className="earned-badge-name">{badge.name}</div>
+                <div key={badge.id} style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '1rem',
+                  background: 'var(--bg-card)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{badge.icon}</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{badge.name}</div>
                 </div>
               ))}
             </div>
@@ -354,63 +483,18 @@ export default function HeroApp() {
         {/* Filters */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
           <div className="filters">
-            <button 
-              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-              onClick={() => setFilter('all')}
-            >
-              All
-            </button>
-            <button 
-              className={`filter-btn ${filter === 'available' ? 'active' : ''}`}
-              onClick={() => setFilter('available')}
-            >
-              ⚔️ Ready
-            </button>
-            <button 
-              className={`filter-btn ${filter === 'in_progress' ? 'active' : ''}`}
-              onClick={() => setFilter('in_progress')}
-            >
-              🎯 Active
-            </button>
-            <button 
-              className={`filter-btn ${filter === 'submitted' ? 'active' : ''}`}
-              onClick={() => setFilter('submitted')}
-            >
-              ⏳ Pending
-            </button>
-            <button 
-              className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
-              onClick={() => setFilter('completed')}
-            >
-              🏆 Done
-            </button>
+            <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>
+            <button className={`filter-btn ${filter === 'available' ? 'active' : ''}`} onClick={() => setFilter('available')}>⚔️ Ready</button>
+            <button className={`filter-btn ${filter === 'in_progress' ? 'active' : ''}`} onClick={() => setFilter('in_progress')}>🎯 Active</button>
+            <button className={`filter-btn ${filter === 'submitted' ? 'active' : ''}`} onClick={() => setFilter('submitted')}>⏳ Pending</button>
+            <button className={`filter-btn ${filter === 'completed' ? 'active' : ''}`} onClick={() => setFilter('completed')}>🏆 Done</button>
           </div>
           
           <div className="filters">
-            <button 
-              className={`filter-btn ${difficultyFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setDifficultyFilter('all')}
-            >
-              All Levels
-            </button>
-            <button 
-              className={`filter-btn ${difficultyFilter === 'beginner' ? 'active' : ''}`}
-              onClick={() => setDifficultyFilter('beginner')}
-            >
-              ⭐ Easy
-            </button>
-            <button 
-              className={`filter-btn ${difficultyFilter === 'intermediate' ? 'active' : ''}`}
-              onClick={() => setDifficultyFilter('intermediate')}
-            >
-              ⭐⭐ Medium
-            </button>
-            <button 
-              className={`filter-btn ${difficultyFilter === 'advanced' ? 'active' : ''}`}
-              onClick={() => setDifficultyFilter('advanced')}
-            >
-              ⭐⭐⭐ Hard
-            </button>
+            <button className={`filter-btn ${difficultyFilter === 'all' ? 'active' : ''}`} onClick={() => setDifficultyFilter('all')}>All Levels</button>
+            <button className={`filter-btn ${difficultyFilter === 'beginner' ? 'active' : ''}`} onClick={() => setDifficultyFilter('beginner')}>⭐ Easy</button>
+            <button className={`filter-btn ${difficultyFilter === 'intermediate' ? 'active' : ''}`} onClick={() => setDifficultyFilter('intermediate')}>⭐⭐ Medium</button>
+            <button className={`filter-btn ${difficultyFilter === 'advanced' ? 'active' : ''}`} onClick={() => setDifficultyFilter('advanced')}>⭐⭐⭐ Hard</button>
           </div>
         </div>
 
@@ -428,7 +512,7 @@ export default function HeroApp() {
               return (
                 <div 
                   key={quest.id} 
-                  className={`card quest-card ${quest.difficulty}`}
+                  className="card quest-card"
                   onClick={() => openQuestDetail(quest)}
                   style={{ cursor: 'pointer' }}
                 >
@@ -445,7 +529,7 @@ export default function HeroApp() {
                       : quest.description}
                   </p>
                   <div className="quest-footer">
-                    <DifficultyStars difficulty={quest.difficulty} />
+                    <span style={{ color: 'var(--neon-orange)' }}>{getDifficultyStars(quest.difficulty)}</span>
                     <span className={`badge badge-${status.replace('_', '-')}`}>
                       {getStatusIcon(status)} {getStatusLabel(status)}
                     </span>
@@ -469,7 +553,7 @@ export default function HeroApp() {
               {/* Quest info */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  <DifficultyStars difficulty={selectedQuest.difficulty} />
+                  <span style={{ color: 'var(--neon-orange)' }}>{getDifficultyStars(selectedQuest.difficulty)}</span>
                   <span style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.8rem' }}>
                     {selectedQuest.category}
                   </span>
@@ -492,7 +576,7 @@ export default function HeroApp() {
               </p>
 
               {/* Mission Steps */}
-              {selectedQuest.steps.length > 0 && (
+              {selectedQuest.steps && selectedQuest.steps.length > 0 && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--neon-cyan)', fontFamily: 'Orbitron, sans-serif' }}>
                     🎯 Mission Steps
@@ -535,7 +619,7 @@ export default function HeroApp() {
                 </div>
               )}
 
-              {/* Submission form (if in progress or rejected) */}
+              {/* Submission form */}
               {(selectedQuest.progress?.status === 'in_progress' || selectedQuest.progress?.status === 'rejected') && (
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
                   <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--neon-green)', fontFamily: 'Orbitron, sans-serif' }}>
@@ -549,7 +633,6 @@ export default function HeroApp() {
                     </div>
                   )}
 
-                  {/* Evidence examples */}
                   {selectedQuest.evidenceExamples?.length > 0 && (
                     <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-dark)', borderRadius: '8px' }}>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>PROOF IDEAS:</div>
@@ -562,7 +645,7 @@ export default function HeroApp() {
                   )}
 
                   <div className="form-group">
-                    <label>Proof Links (Screenshots, etc.)</label>
+                    <label>Proof Links</label>
                     {evidenceLinks.map((link, i) => (
                       <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         <input
@@ -585,10 +668,7 @@ export default function HeroApp() {
                         )}
                       </div>
                     ))}
-                    <button
-                      className="btn btn-ghost btn-small"
-                      onClick={() => setEvidenceLinks([...evidenceLinks, ''])}
-                    >
+                    <button className="btn btn-ghost btn-small" onClick={() => setEvidenceLinks([...evidenceLinks, ''])}>
                       + Add Another Link
                     </button>
                   </div>
@@ -629,27 +709,17 @@ export default function HeroApp() {
 
             <div className="modal-footer">
               {!selectedQuest.progress && (
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => handleStartQuest(selectedQuest.id)}
-                >
+                <button className="btn btn-primary" onClick={() => handleStartQuest(selectedQuest.id)}>
                   ⚔️ Accept Quest
                 </button>
               )}
               {(selectedQuest.progress?.status === 'in_progress' || selectedQuest.progress?.status === 'rejected') && (
-                <button 
-                  className="btn btn-success"
-                  onClick={() => handleSubmitQuest(selectedQuest.id)}
-                  disabled={submitting}
-                >
+                <button className="btn btn-success" onClick={() => handleSubmitQuest(selectedQuest.id)} disabled={submitting}>
                   {submitting ? 'Sending...' : '🚀 Submit Proof'}
                 </button>
               )}
               {(selectedQuest.progress?.status === 'submitted' || selectedQuest.progress?.status === 'completed') && (
-                <button 
-                  className="btn btn-ghost"
-                  onClick={() => setSelectedQuest(null)}
-                >
+                <button className="btn btn-ghost" onClick={() => setSelectedQuest(null)}>
                   Close
                 </button>
               )}
@@ -657,6 +727,17 @@ export default function HeroApp() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }

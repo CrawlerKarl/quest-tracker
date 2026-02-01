@@ -26,9 +26,37 @@ export async function GET() {
     `;
     const questCounts = questCountsResult.rows[0];
 
-    // Get total available quests
-    const totalQuestsResult = await sql`SELECT COUNT(*) as count FROM quests WHERE is_active = true`;
-    const totalQuests = parseInt(totalQuestsResult.rows[0].count);
+    // Get completed quest IDs for unlock checking
+    const completedResult = await sql`
+      SELECT quest_id FROM quest_progress WHERE status = 'completed'
+    `;
+    const completedQuestIds = completedResult.rows.map(r => r.quest_id);
+
+    // Get all quests to calculate available (unlocked) count
+    const allQuestsResult = await sql`
+      SELECT id, is_locked, unlocks_after FROM quests WHERE is_active = true
+    `;
+    
+    // Count only unlocked quests (same logic as the quests API)
+    let unlockedCount = 0;
+    for (const quest of allQuestsResult.rows) {
+      // If not locked, count it
+      if (!quest.is_locked) {
+        unlockedCount++;
+        continue;
+      }
+      
+      // If locked, check if prerequisites are met
+      const unlocksAfter = JSON.parse(quest.unlocks_after || '[]');
+      if (unlocksAfter.length > 0) {
+        const allPrereqsCompleted = unlocksAfter.every((reqId: number) => 
+          completedQuestIds.includes(reqId)
+        );
+        if (allPrereqsCompleted) {
+          unlockedCount++;
+        }
+      }
+    }
 
     // Get earned badges
     const badgesResult = await sql`
@@ -39,6 +67,12 @@ export async function GET() {
 
     // Calculate XP progress
     const xpProgress = xpForNextLevel(stats.total_xp);
+
+    // Calculate available = unlocked - in_progress - pending - completed
+    const inProgressCount = parseInt(questCounts.in_progress) || 0;
+    const pendingCount = parseInt(questCounts.pending_review) || 0;
+    const completedCount = parseInt(questCounts.completed) || 0;
+    const availableCount = unlockedCount - inProgressCount - pendingCount - completedCount;
 
     return NextResponse.json({
       stats: {
@@ -51,11 +85,11 @@ export async function GET() {
       },
       xpProgress,
       questCounts: {
-        inProgress: parseInt(questCounts.in_progress) || 0,
-        pendingReview: parseInt(questCounts.pending_review) || 0,
-        completed: parseInt(questCounts.completed) || 0,
-        total: totalQuests,
-        available: totalQuests - (parseInt(questCounts.in_progress) || 0) - (parseInt(questCounts.pending_review) || 0) - (parseInt(questCounts.completed) || 0),
+        inProgress: inProgressCount,
+        pendingReview: pendingCount,
+        completed: completedCount,
+        total: unlockedCount,
+        available: Math.max(0, availableCount),
       },
       earnedBadges: badgesResult.rows,
     });
