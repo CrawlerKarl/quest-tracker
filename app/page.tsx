@@ -21,14 +21,40 @@ export default function Home() {
       textAlign: 'center',
       padding: '2rem'
     }}>
-      <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎮</div>
-      <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Quest Tracker</h1>
-      <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '2rem' }}>
-        A gamified journey to master digital skills and stay safe online.
+      <div style={{ 
+        fontSize: '5rem', 
+        marginBottom: '1rem',
+        animation: 'pulse 2s ease-in-out infinite'
+      }}>⚡</div>
+      <h1 style={{ 
+        fontFamily: 'Orbitron, sans-serif',
+        fontSize: '3rem', 
+        marginBottom: '0.5rem',
+        background: 'linear-gradient(90deg, #00d4ff, #ff0080)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text'
+      }}>
+        CyberQuest
+      </h1>
+      <p style={{ 
+        color: 'var(--text-secondary)', 
+        maxWidth: '400px', 
+        marginBottom: '2rem',
+        fontSize: '1.1rem'
+      }}>
+        Level up your digital skills. Earn XP. Become a legend.
       </p>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-        Use your secret link to access the app.
-      </p>
+      <div style={{ 
+        padding: '1rem 2rem',
+        background: 'rgba(0, 212, 255, 0.1)',
+        border: '1px solid rgba(0, 212, 255, 0.3)',
+        borderRadius: '8px',
+        color: 'var(--text-muted)',
+        fontSize: '0.9rem'
+      }}>
+        🔐 Use your secret link to enter
+      </div>
     </main>
   );
 }

@@ -49,7 +49,28 @@ interface Badge {
   icon: string;
 }
 
-export default function MenteeApp() {
+// Rank system
+function getRank(xp: number): { name: string; icon: string; class: string } {
+  if (xp >= 5000) return { name: 'LEGEND', icon: '👑', class: 'rank-legend' };
+  if (xp >= 3000) return { name: 'ELITE', icon: '💎', class: 'rank-elite' };
+  if (xp >= 1500) return { name: 'PRO', icon: '🔥', class: 'rank-pro' };
+  if (xp >= 500) return { name: 'APPRENTICE', icon: '⚡', class: 'rank-apprentice' };
+  return { name: 'ROOKIE', icon: '🌱', class: 'rank-rookie' };
+}
+
+// Difficulty to stars
+function DifficultyStars({ difficulty }: { difficulty: string }) {
+  const stars = difficulty === 'beginner' ? 1 : difficulty === 'intermediate' ? 2 : 3;
+  return (
+    <div className="difficulty-stars" title={difficulty}>
+      {[1, 2, 3].map(i => (
+        <span key={i} className={`star ${i <= stars ? 'filled' : ''}`}>★</span>
+      ))}
+    </div>
+  );
+}
+
+export default function HeroApp() {
   const [quests, setQuests] = useState<Quest[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [xpProgress, setXpProgress] = useState<XpProgress | null>(null);
@@ -59,6 +80,9 @@ export default function MenteeApp() {
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('all');
+  
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; xp?: number } | null>(null);
 
   // Submission form state
   const [evidenceLinks, setEvidenceLinks] = useState<string[]>(['']);
@@ -69,6 +93,14 @@ export default function MenteeApp() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Auto-hide toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   async function fetchData() {
     try {
@@ -101,6 +133,7 @@ export default function MenteeApp() {
       });
 
       if (res.ok) {
+        setToast({ message: '🚀 Quest started! Let\'s go!' });
         fetchData();
         setSelectedQuest(null);
       }
@@ -112,7 +145,7 @@ export default function MenteeApp() {
   async function handleSubmitQuest(questId: number) {
     const filteredLinks = evidenceLinks.filter(link => link.trim());
     if (filteredLinks.length === 0) {
-      alert('Please add at least one evidence link');
+      alert('Drop at least one proof link!');
       return;
     }
 
@@ -129,6 +162,7 @@ export default function MenteeApp() {
       });
 
       if (res.ok) {
+        setToast({ message: '📤 Proof sent! Waiting for your Guide...' });
         setEvidenceLinks(['']);
         setReflection('');
         fetchData();
@@ -145,14 +179,12 @@ export default function MenteeApp() {
   }
 
   async function openQuestDetail(quest: Quest) {
-    // Fetch fresh quest data with safety reminder
     try {
       const res = await fetch(`/api/quests/${quest.id}`);
       const data = await res.json();
       setSelectedQuest(data.quest);
       setSafetyReminder(data.safetyReminder || '');
       
-      // Pre-populate evidence links if resuming
       if (data.quest.progress?.evidence_links) {
         const links = JSON.parse(data.quest.progress.evidence_links);
         setEvidenceLinks(links.length > 0 ? links : ['']);
@@ -171,14 +203,26 @@ export default function MenteeApp() {
 
   function getStatusLabel(status: string): string {
     const labels: Record<string, string> = {
-      available: 'Available',
-      in_progress: 'In Progress',
-      submitted: 'Under Review',
-      approved: 'Approved',
-      rejected: 'Needs Revision',
-      completed: 'Completed',
+      available: 'Ready',
+      in_progress: 'Active',
+      submitted: 'Sent to Guide',
+      approved: 'Victory!',
+      rejected: 'Try Again',
+      completed: 'Crushed It!',
     };
     return labels[status] || status;
+  }
+
+  function getStatusIcon(status: string): string {
+    const icons: Record<string, string> = {
+      available: '⚔️',
+      in_progress: '🎯',
+      submitted: '⏳',
+      approved: '✅',
+      rejected: '🔄',
+      completed: '🏆',
+    };
+    return icons[status] || '📋';
   }
 
   const filteredQuests = quests.filter(quest => {
@@ -188,71 +232,117 @@ export default function MenteeApp() {
     return true;
   });
 
-  const categories = Array.from(new Set(quests.map(q => q.category)));
+  const rank = getRank(stats?.totalXp || 0);
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
         <div className="spinner"></div>
+        <div style={{ fontFamily: 'Orbitron, sans-serif', color: 'var(--neon-cyan)' }}>LOADING...</div>
       </div>
     );
   }
 
   return (
     <div>
+      {/* Toast Notification */}
+      {toast && (
+        <div className="toast toast-success">
+          <span>{toast.message}</span>
+          {toast.xp && <span className="toast-xp">+{toast.xp} XP</span>}
+        </div>
+      )}
+
       {/* Header */}
       <header className="header">
         <div className="container header-content">
           <div className="logo">
-            🎮 Quest Tracker
+            <span className="logo-icon">⚡</span>
+            <span>CyberQuest</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="xp-display">
-              ⭐ {stats?.totalXp || 0} XP
+            <div className={`rank-badge ${rank.class}`}>
+              {rank.icon} {rank.name}
             </div>
-            <div className="level-badge">{stats?.level || 1}</div>
           </div>
         </div>
       </header>
 
       <main className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
-        {/* HUD */}
-        <div className="hud">
-          <div className="hud-stat">
-            <div className="hud-stat-value">{stats?.level || 1}</div>
-            <div className="hud-stat-label">Level</div>
-            {xpProgress && (
-              <div style={{ marginTop: '0.5rem' }}>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${xpProgress.progress}%` }}></div>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  {xpProgress.current} / {xpProgress.needed} XP
+        {/* Hero Section */}
+        <div className="hero-section">
+          <div className="hero-content">
+            <div className="hero-avatar">🦸</div>
+            <div className="hero-info">
+              <div className="hero-rank">{rank.icon} {rank.name}</div>
+              <div className="hero-level">LEVEL {stats?.level || 1}</div>
+              
+              {/* XP Progress Bar */}
+              <div className="xp-bar-container">
+                <div className="xp-bar">
+                  <div 
+                    className="xp-bar-fill" 
+                    style={{ width: `${xpProgress?.progress || 0}%` }}
+                  ></div>
+                  <div className="xp-bar-text">
+                    {xpProgress?.current || 0} / {xpProgress?.needed || 500} XP
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-          <div className="hud-stat">
-            <div className="hud-stat-value">{questCounts?.completed || 0}</div>
-            <div className="hud-stat-label">Quests Completed</div>
-          </div>
-          <div className="hud-stat">
-            <div className="hud-stat-value">{questCounts?.inProgress || 0}</div>
-            <div className="hud-stat-label">In Progress</div>
-          </div>
-          <div className="hud-stat">
-            <div className="hud-stat-value">{questCounts?.pendingReview || 0}</div>
-            <div className="hud-stat-label">Pending Review</div>
+              
+              <div className="hero-xp-text">
+                {xpProgress && xpProgress.needed - xpProgress.current > 0 && (
+                  <span>{xpProgress.needed - xpProgress.current} XP until next level!</span>
+                )}
+              </div>
+            </div>
+            
+            <div className="hero-stats">
+              <div className="hero-stat">
+                <div className="hero-stat-value">{questCounts?.completed || 0}</div>
+                <div className="hero-stat-label">Wins</div>
+              </div>
+              <div className="hero-stat">
+                <div className="hero-stat-value">{stats?.totalXp || 0}</div>
+                <div className="hero-stat-label">Total XP</div>
+              </div>
+              <div className="hero-stat">
+                <div className="hero-stat-value">{questCounts?.inProgress || 0}</div>
+                <div className="hero-stat-label">Active</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Badges */}
+        {/* Quick Stats HUD */}
+        <div className="hud">
+          <div className="hud-stat">
+            <div className="hud-stat-value" style={{ color: 'var(--neon-cyan)' }}>{questCounts?.available || 0}</div>
+            <div className="hud-stat-label">Ready to Start</div>
+          </div>
+          <div className="hud-stat">
+            <div className="hud-stat-value" style={{ color: 'var(--neon-orange)' }}>{questCounts?.inProgress || 0}</div>
+            <div className="hud-stat-label">In Progress</div>
+          </div>
+          <div className="hud-stat">
+            <div className="hud-stat-value" style={{ color: 'var(--neon-pink)' }}>{questCounts?.pendingReview || 0}</div>
+            <div className="hud-stat-label">Awaiting Guide</div>
+          </div>
+          <div className="hud-stat">
+            <div className="hud-stat-value" style={{ color: 'var(--neon-green)' }}>{questCounts?.completed || 0}</div>
+            <div className="hud-stat-label">Victories</div>
+          </div>
+        </div>
+
+        {/* Earned Badges */}
         {earnedBadges.length > 0 && (
           <div style={{ marginBottom: '2rem' }}>
-            <h2 style={{ marginBottom: '1rem', fontSize: '1.25rem' }}>🏅 Earned Badges</h2>
+            <h2 style={{ fontFamily: 'Orbitron, sans-serif', marginBottom: '1rem', color: 'var(--neon-purple)' }}>
+              🏅 Achievements Unlocked
+            </h2>
             <div className="badges-grid">
               {earnedBadges.map(badge => (
-                <div key={badge.id} className="earned-badge" title={badge.description}>
+                <div key={badge.id} className="earned-badge">
                   <div className="earned-badge-icon">{badge.icon}</div>
                   <div className="earned-badge-name">{badge.name}</div>
                 </div>
@@ -262,80 +352,86 @@ export default function MenteeApp() {
         )}
 
         {/* Filters */}
-        <div className="section-header">
-          <h2 className="section-title">Quest Board</h2>
-        </div>
-        <div className="filters">
-          <button 
-            className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-            onClick={() => setFilter('all')}
-          >
-            All
-          </button>
-          <button 
-            className={`filter-btn ${filter === 'available' ? 'active' : ''}`}
-            onClick={() => setFilter('available')}
-          >
-            Available
-          </button>
-          <button 
-            className={`filter-btn ${filter === 'in_progress' ? 'active' : ''}`}
-            onClick={() => setFilter('in_progress')}
-          >
-            In Progress
-          </button>
-          <button 
-            className={`filter-btn ${filter === 'submitted' ? 'active' : ''}`}
-            onClick={() => setFilter('submitted')}
-          >
-            Under Review
-          </button>
-          <button 
-            className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
-            onClick={() => setFilter('completed')}
-          >
-            Completed
-          </button>
-        </div>
-        <div className="filters">
-          <button 
-            className={`filter-btn ${difficultyFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setDifficultyFilter('all')}
-          >
-            All Levels
-          </button>
-          <button 
-            className={`filter-btn ${difficultyFilter === 'beginner' ? 'active' : ''}`}
-            onClick={() => setDifficultyFilter('beginner')}
-          >
-            🌱 Beginner
-          </button>
-          <button 
-            className={`filter-btn ${difficultyFilter === 'intermediate' ? 'active' : ''}`}
-            onClick={() => setDifficultyFilter('intermediate')}
-          >
-            🌿 Intermediate
-          </button>
-          <button 
-            className={`filter-btn ${difficultyFilter === 'advanced' ? 'active' : ''}`}
-            onClick={() => setDifficultyFilter('advanced')}
-          >
-            🌳 Advanced
-          </button>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+          <div className="filters">
+            <button 
+              className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+              onClick={() => setFilter('all')}
+            >
+              All
+            </button>
+            <button 
+              className={`filter-btn ${filter === 'available' ? 'active' : ''}`}
+              onClick={() => setFilter('available')}
+            >
+              ⚔️ Ready
+            </button>
+            <button 
+              className={`filter-btn ${filter === 'in_progress' ? 'active' : ''}`}
+              onClick={() => setFilter('in_progress')}
+            >
+              🎯 Active
+            </button>
+            <button 
+              className={`filter-btn ${filter === 'submitted' ? 'active' : ''}`}
+              onClick={() => setFilter('submitted')}
+            >
+              ⏳ Pending
+            </button>
+            <button 
+              className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
+              onClick={() => setFilter('completed')}
+            >
+              🏆 Done
+            </button>
+          </div>
+          
+          <div className="filters">
+            <button 
+              className={`filter-btn ${difficultyFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setDifficultyFilter('all')}
+            >
+              All Levels
+            </button>
+            <button 
+              className={`filter-btn ${difficultyFilter === 'beginner' ? 'active' : ''}`}
+              onClick={() => setDifficultyFilter('beginner')}
+            >
+              ⭐ Easy
+            </button>
+            <button 
+              className={`filter-btn ${difficultyFilter === 'intermediate' ? 'active' : ''}`}
+              onClick={() => setDifficultyFilter('intermediate')}
+            >
+              ⭐⭐ Medium
+            </button>
+            <button 
+              className={`filter-btn ${difficultyFilter === 'advanced' ? 'active' : ''}`}
+              onClick={() => setDifficultyFilter('advanced')}
+            >
+              ⭐⭐⭐ Hard
+            </button>
+          </div>
         </div>
 
         {/* Quest Grid */}
         {filteredQuests.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">📋</div>
-            <p>No quests match your filters</p>
+            <div className="empty-state-icon">🎮</div>
+            <p style={{ fontFamily: 'Orbitron, sans-serif' }}>No quests here!</p>
+            <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)' }}>Try changing your filters</p>
           </div>
         ) : (
           <div className="quest-grid">
             {filteredQuests.map(quest => {
               const status = getQuestStatus(quest);
               return (
-                <div key={quest.id} className="card quest-card" onClick={() => openQuestDetail(quest)}>
+                <div 
+                  key={quest.id} 
+                  className={`card quest-card ${quest.difficulty}`}
+                  onClick={() => openQuestDetail(quest)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="quest-card-header">
                     <div>
                       <div className="quest-title">{quest.title}</div>
@@ -343,13 +439,15 @@ export default function MenteeApp() {
                     </div>
                     <div className="quest-xp">+{quest.xp_reward} XP</div>
                   </div>
-                  <p className="quest-description">{quest.description}</p>
+                  <p className="quest-description">
+                    {quest.description.length > 100 
+                      ? quest.description.slice(0, 100) + '...' 
+                      : quest.description}
+                  </p>
                   <div className="quest-footer">
-                    <span className={`badge badge-${quest.difficulty}`}>
-                      {quest.difficulty}
-                    </span>
+                    <DifficultyStars difficulty={quest.difficulty} />
                     <span className={`badge badge-${status.replace('_', '-')}`}>
-                      {getStatusLabel(status)}
+                      {getStatusIcon(status)} {getStatusLabel(status)}
                     </span>
                   </div>
                 </div>
@@ -362,94 +460,114 @@ export default function MenteeApp() {
       {/* Quest Detail Modal */}
       {selectedQuest && (
         <div className="modal-overlay" onClick={() => setSelectedQuest(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '650px' }}>
             <div className="modal-header">
               <h2 className="modal-title">{selectedQuest.title}</h2>
               <button className="modal-close" onClick={() => setSelectedQuest(null)}>×</button>
             </div>
             <div className="modal-body">
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                <span className={`badge badge-${selectedQuest.difficulty}`}>
-                  {selectedQuest.difficulty}
-                </span>
-                <span className={`badge badge-${getQuestStatus(selectedQuest).replace('_', '-')}`}>
-                  {getStatusLabel(getQuestStatus(selectedQuest))}
-                </span>
-                <span className="quest-xp">+{selectedQuest.xp_reward} XP</span>
+              {/* Quest info */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <DifficultyStars difficulty={selectedQuest.difficulty} />
+                  <span style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.8rem' }}>
+                    {selectedQuest.category}
+                  </span>
+                </div>
+                <span className="quest-xp" style={{ fontSize: '1.1rem' }}>+{selectedQuest.xp_reward} XP</span>
               </div>
 
-              <p style={{ marginBottom: '1.5rem', color: 'var(--text-secondary)' }}>
-                {selectedQuest.description}
-              </p>
-
-              {selectedQuest.why_it_matters && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>💡 Why It Matters</h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                    {selectedQuest.why_it_matters}
-                  </p>
+              {/* Status badge */}
+              {selectedQuest.progress && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <span className={`badge badge-${selectedQuest.progress.status.replace('_', '-')}`}>
+                    {getStatusIcon(selectedQuest.progress.status)} {getStatusLabel(selectedQuest.progress.status)}
+                  </span>
                 </div>
               )}
 
-              <div style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>📝 Steps</h3>
-                <ol className="steps-list">
-                  {selectedQuest.steps.map((step, i) => (
-                    <li key={i}>{step}</li>
-                  ))}
-                </ol>
-              </div>
+              {/* Description */}
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.7' }}>
+                {selectedQuest.description}
+              </p>
 
+              {/* Mission Steps */}
+              {selectedQuest.steps.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--neon-cyan)', fontFamily: 'Orbitron, sans-serif' }}>
+                    🎯 Mission Steps
+                  </h3>
+                  <ol className="steps-list">
+                    {selectedQuest.steps.map((step, i) => (
+                      <li key={i}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {/* Why it matters */}
+              {selectedQuest.why_it_matters && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--neon-orange)' }}>💡 Why This Matters</h3>
+                  <p style={{ color: 'var(--text-secondary)' }}>{selectedQuest.why_it_matters}</p>
+                </div>
+              )}
+
+              {/* Safety notes */}
               {selectedQuest.safety_notes && (
                 <div className="alert alert-warning" style={{ marginBottom: '1.5rem' }}>
                   <span>⚠️</span>
                   <div>
-                    <strong>Safety Note</strong>
-                    <p style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>{selectedQuest.safety_notes}</p>
+                    <strong>Heads Up</strong>
+                    <p style={{ marginTop: '0.25rem' }}>{selectedQuest.safety_notes}</p>
                   </div>
                 </div>
               )}
 
-              {selectedQuest.evidenceExamples && selectedQuest.evidenceExamples.length > 0 && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>📸 Evidence Examples</h3>
-                  <ul style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', paddingLeft: '1.25rem' }}>
-                    {selectedQuest.evidenceExamples.map((example, i) => (
-                      <li key={i} style={{ marginBottom: '0.25rem' }}>{example}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Mentor Feedback */}
-              {selectedQuest.progress?.mentor_feedback && (
-                <div className={`alert ${getQuestStatus(selectedQuest) === 'completed' ? 'alert-success' : 'alert-info'}`}>
+              {/* Guide feedback (if rejected) */}
+              {selectedQuest.progress?.status === 'rejected' && selectedQuest.progress.mentor_feedback && (
+                <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
                   <span>💬</span>
                   <div>
-                    <strong>Mentor Feedback</strong>
-                    <p style={{ marginTop: '0.25rem', fontSize: '0.9rem' }}>{selectedQuest.progress.mentor_feedback}</p>
+                    <strong>Guide Feedback</strong>
+                    <p style={{ marginTop: '0.25rem' }}>{selectedQuest.progress.mentor_feedback}</p>
                   </div>
                 </div>
               )}
 
-              {/* Submission Form */}
-              {(getQuestStatus(selectedQuest) === 'in_progress' || getQuestStatus(selectedQuest) === 'rejected') && (
+              {/* Submission form (if in progress or rejected) */}
+              {(selectedQuest.progress?.status === 'in_progress' || selectedQuest.progress?.status === 'rejected') && (
                 <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>📤 Submit Evidence</h3>
-                  
+                  <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--neon-green)', fontFamily: 'Orbitron, sans-serif' }}>
+                    📤 Drop Your Proof
+                  </h3>
+
                   {safetyReminder && (
-                    <div className="alert alert-warning" style={{ marginBottom: '1rem', whiteSpace: 'pre-line', fontSize: '0.85rem' }}>
-                      {safetyReminder}
+                    <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+                      <span>🔒</span>
+                      <div style={{ fontSize: '0.85rem' }}>{safetyReminder}</div>
+                    </div>
+                  )}
+
+                  {/* Evidence examples */}
+                  {selectedQuest.evidenceExamples?.length > 0 && (
+                    <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-dark)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>PROOF IDEAS:</div>
+                      <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        {selectedQuest.evidenceExamples.map((example, i) => (
+                          <li key={i}>{example}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
                   <div className="form-group">
-                    <label>Evidence Links</label>
+                    <label>Proof Links (Screenshots, etc.)</label>
                     {evidenceLinks.map((link, i) => (
                       <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         <input
                           type="url"
-                          placeholder="https://..."
+                          placeholder="https://imgur.com/your-screenshot"
                           value={link}
                           onChange={e => {
                             const newLinks = [...evidenceLinks];
@@ -470,62 +588,72 @@ export default function MenteeApp() {
                     <button
                       className="btn btn-ghost btn-small"
                       onClick={() => setEvidenceLinks([...evidenceLinks, ''])}
-                      style={{ marginTop: '0.5rem' }}
                     >
                       + Add Another Link
                     </button>
                   </div>
 
                   <div className="form-group">
-                    <label>Reflection (optional)</label>
+                    <label>Battle Notes (Optional)</label>
                     <textarea
                       placeholder="What did you learn? Any challenges?"
                       value={reflection}
                       onChange={e => setReflection(e.target.value)}
                     />
                   </div>
+                </div>
+              )}
 
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => handleSubmitQuest(selectedQuest.id)}
-                    disabled={submitting}
-                    style={{ width: '100%' }}
-                  >
-                    {submitting ? 'Submitting...' : 'Submit for Review'}
-                  </button>
+              {/* Completed state */}
+              {selectedQuest.progress?.status === 'completed' && (
+                <div className="alert alert-success">
+                  <span>🏆</span>
+                  <div>
+                    <strong>Victory! Quest Complete!</strong>
+                    <p style={{ marginTop: '0.25rem' }}>You earned +{selectedQuest.xp_reward} XP for this quest.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Submitted state */}
+              {selectedQuest.progress?.status === 'submitted' && (
+                <div className="alert alert-info">
+                  <span>⏳</span>
+                  <div>
+                    <strong>Proof Sent!</strong>
+                    <p style={{ marginTop: '0.25rem' }}>Waiting for your Guide to review...</p>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Action buttons */}
-            {getQuestStatus(selectedQuest) === 'available' && (
-              <div className="modal-footer">
-                <button className="btn btn-ghost" onClick={() => setSelectedQuest(null)}>
-                  Cancel
+            <div className="modal-footer">
+              {!selectedQuest.progress && (
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => handleStartQuest(selectedQuest.id)}
+                >
+                  ⚔️ Accept Quest
                 </button>
-                <button className="btn btn-primary" onClick={() => handleStartQuest(selectedQuest.id)}>
-                  Start Quest
+              )}
+              {(selectedQuest.progress?.status === 'in_progress' || selectedQuest.progress?.status === 'rejected') && (
+                <button 
+                  className="btn btn-success"
+                  onClick={() => handleSubmitQuest(selectedQuest.id)}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Sending...' : '🚀 Submit Proof'}
                 </button>
-              </div>
-            )}
-
-            {getQuestStatus(selectedQuest) === 'submitted' && (
-              <div className="modal-footer">
-                <div className="alert alert-info" style={{ margin: 0, flex: 1 }}>
-                  <span>⏳</span>
-                  <span>Waiting for mentor review...</span>
-                </div>
-              </div>
-            )}
-
-            {getQuestStatus(selectedQuest) === 'completed' && (
-              <div className="modal-footer">
-                <div className="alert alert-success" style={{ margin: 0, flex: 1 }}>
-                  <span>🎉</span>
-                  <span>Quest completed! +{selectedQuest.xp_reward} XP earned</span>
-                </div>
-              </div>
-            )}
+              )}
+              {(selectedQuest.progress?.status === 'submitted' || selectedQuest.progress?.status === 'completed') && (
+                <button 
+                  className="btn btn-ghost"
+                  onClick={() => setSelectedQuest(null)}
+                >
+                  Close
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
