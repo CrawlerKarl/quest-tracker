@@ -40,7 +40,7 @@ interface Stats {
   questsCompleted: number;
 }
 
-interface 📜 History {
+interface Activity {
   id: number;
   action: string;
   quest_title: string;
@@ -48,20 +48,27 @@ interface 📜 History {
   created_at: string;
 }
 
-export default function GUIDEDashboard() {
-  const [activeTab, setActiveTab] = useState<'review' | 'quests' | 'activity'>('review');
+// Rank system
+function getRank(xp: number): { name: string; icon: string; class: string } {
+  if (xp >= 5000) return { name: 'LEGEND', icon: '👑', class: 'rank-legend' };
+  if (xp >= 3000) return { name: 'ELITE', icon: '💎', class: 'rank-elite' };
+  if (xp >= 1500) return { name: 'PRO', icon: '🔥', class: 'rank-pro' };
+  if (xp >= 500) return { name: 'APPRENTICE', icon: '⚡', class: 'rank-apprentice' };
+  return { name: 'ROOKIE', icon: '🌱', class: 'rank-rookie' };
+}
+
+export default function GuideDashboard() {
+  const [activeTab, setActiveTab] = useState<'inbox' | 'quests' | 'history'>('inbox');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [quests, setQuests] = useState<Quest[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [activities, setActivities] = useState<📜 History[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Review state
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [feedback, setFeedback] = useState('');
   const [reviewing, setReviewing] = useState(false);
 
-  // Quest editor state
   const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
   const [questForm, setQuestForm] = useState({
     title: '',
@@ -77,8 +84,6 @@ export default function GUIDEDashboard() {
     unlocksAfter: [] as number[],
   });
   const [saving, setSaving] = useState(false);
-
-  // Hero URL display
   const [showHeroUrl, setShowHeroUrl] = useState(false);
 
   useEffect(() => {
@@ -216,7 +221,7 @@ export default function GUIDEDashboard() {
         unlocksAfter: quest.unlocksAfter || [],
       });
     } else {
-      setEditingQuest({} as Quest); // New quest marker
+      setEditingQuest({} as Quest);
       resetQuestForm();
     }
   }
@@ -230,77 +235,76 @@ export default function GUIDEDashboard() {
     });
   }
 
-  function get📜 HistoryIcon(action: string): string {
+  function getActivityIcon(action: string): string {
     const icons: Record<string, string> = {
       quest_started: '🚀',
       quest_submitted: '📤',
       quest_approved: '✅',
-      quest_rejected: '↩️',
+      quest_rejected: '🔄',
       badge_earned: '🏅',
       quest_created: '📝',
     };
     return icons[action] || '📋';
   }
 
-  function get📜 HistoryLabel(activity: 📜 History): string {
+  function getActivityLabel(activity: Activity): string {
     const labels: Record<string, string> = {
       quest_started: `Started: ${activity.quest_title}`,
       quest_submitted: `Submitted: ${activity.quest_title}`,
-      quest_approved: `Approved: ${activity.quest_title} (+${activity.details?.xpAwarded || 0} XP)`,
+      quest_approved: `Victory! ${activity.quest_title} (+${activity.details?.xpAwarded || 0} XP)`,
       quest_rejected: `Returned: ${activity.quest_title}`,
-      badge_earned: `Earned badge: ${activity.details?.badgeIcon} ${activity.details?.badgeName}`,
-      quest_created: `Created: ${activity.details?.title}`,
+      badge_earned: `Achievement: ${activity.details?.badgeIcon} ${activity.details?.badgeName}`,
+      quest_created: `New Quest: ${activity.details?.title}`,
     };
     return labels[activity.action] || activity.action;
   }
 
   function getQuestStatusBadge(quest: Quest) {
     if (quest.progress?.status === 'completed') {
-      return <span className="badge badge-completed">✓ Done</span>;
+      return <span className="badge badge-completed">🏆 Done</span>;
     }
     if (quest.progress?.status === 'submitted') {
-      return <span className="badge badge-submitted">Pending</span>;
+      return <span className="badge badge-submitted">⏳ Pending</span>;
     }
     if (quest.progress?.status === 'in_progress') {
-      return <span className="badge badge-in-progress">Active</span>;
+      return <span className="badge badge-in-progress">🎯 Active</span>;
     }
     return null;
   }
 
-  // Get categories from existing quests
   const categories = Array.from(new Set(quests.map(q => q.category)));
-  
-  // Count locked/unlocked
   const lockedCount = quests.filter(q => q.is_locked).length;
   const unlockedCount = quests.filter(q => !q.is_locked).length;
+  const rank = getRank(stats?.totalXp || 0);
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
         <div className="spinner"></div>
+        <div style={{ fontFamily: 'Orbitron, sans-serif', color: 'var(--neon-cyan)' }}>LOADING...</div>
       </div>
     );
   }
 
   return (
     <div>
-      {/* Header */}
       <header className="header">
         <div className="container header-content">
           <div className="logo">
-            🎮 CyberQuest <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>GUIDE</span>
+            <span className="logo-icon">⚡</span>
+            <span>CyberQuest</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--neon-pink)', marginLeft: '0.5rem', fontFamily: 'Inter, sans-serif' }}>GUIDE</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button 
-              className="btn btn-ghost btn-small"
-              onClick={() => setShowHeroUrl(true)}
-            >
+            <button className="btn btn-ghost btn-small" onClick={() => setShowHeroUrl(true)}>
               📋 Get Hero Link
             </button>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: '600' }}>Level {stats?.level || 1}</div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {stats?.questsCompleted || 0} wins
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '0.9rem' }}>
+                Hero: {rank.icon} {rank.name}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {stats?.questsCompleted || 0} wins • {stats?.totalXp || 0} XP
               </div>
             </div>
           </div>
@@ -308,56 +312,44 @@ export default function GUIDEDashboard() {
       </header>
 
       <main className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
-        {/* Stats Overview */}
         <div className="hud" style={{ marginBottom: '2rem' }}>
           <div className="hud-stat">
-            <div className="hud-stat-value" style={{ color: 'var(--accent-gold)' }}>{submissions.length}</div>
+            <div className="hud-stat-value" style={{ color: 'var(--neon-orange)' }}>{submissions.length}</div>
             <div className="hud-stat-label">Inbox</div>
           </div>
           <div className="hud-stat">
             <div className="hud-stat-value">{stats?.totalXp || 0}</div>
-            <div className="hud-stat-label">Total XP Earned</div>
+            <div className="hud-stat-label">Hero XP</div>
           </div>
           <div className="hud-stat">
-            <div className="hud-stat-value" style={{ color: 'var(--accent-green)' }}>{unlockedCount}</div>
-            <div className="hud-stat-label">Unlocked Quests</div>
+            <div className="hud-stat-value" style={{ color: 'var(--neon-green)' }}>{unlockedCount}</div>
+            <div className="hud-stat-label">Unlocked</div>
           </div>
           <div className="hud-stat">
             <div className="hud-stat-value" style={{ color: 'var(--text-muted)' }}>{lockedCount}</div>
-            <div className="hud-stat-label">Locked Quests</div>
+            <div className="hud-stat-label">Locked</div>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="tabs">
-          <button 
-            className={`tab ${activeTab === 'review' ? 'active' : ''}`}
-            onClick={() => setActiveTab('review')}
-          >
+          <button className={`tab ${activeTab === 'inbox' ? 'active' : ''}`} onClick={() => setActiveTab('inbox')}>
             📥 Inbox {submissions.length > 0 && `(${submissions.length})`}
           </button>
-          <button 
-            className={`tab ${activeTab === 'quests' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quests')}
-          >
+          <button className={`tab ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => setActiveTab('quests')}>
             ⚔️ Quests
           </button>
-          <button 
-            className={`tab ${activeTab === 'activity' ? 'active' : ''}`}
-            onClick={() => setActiveTab('activity')}
-          >
+          <button className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
             📜 History
           </button>
         </div>
 
-        {/* Review Tab */}
-        {activeTab === 'review' && (
+        {activeTab === 'inbox' && (
           <div>
             {submissions.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-state-icon">✅</div>
-                <p>No submissions to review</p>
-                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Check back when your hero submits evidence</p>
+                <div className="empty-state-icon">📭</div>
+                <p style={{ fontFamily: 'Orbitron, sans-serif' }}>Inbox Empty</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', color: 'var(--text-muted)' }}>Waiting for your Hero to submit proof...</p>
               </div>
             ) : (
               <div className="table-container">
@@ -366,7 +358,7 @@ export default function GUIDEDashboard() {
                     <tr>
                       <th>Quest</th>
                       <th>Category</th>
-                      <th>Difficulty</th>
+                      <th>Level</th>
                       <th>XP</th>
                       <th>Submitted</th>
                       <th>Action</th>
@@ -376,22 +368,16 @@ export default function GUIDEDashboard() {
                     {submissions.map(sub => (
                       <tr key={sub.id}>
                         <td style={{ fontWeight: '500' }}>{sub.quest_title}</td>
-                        <td>{sub.quest_category}</td>
+                        <td style={{ textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sub.quest_category}</td>
                         <td>
                           <span className={`badge badge-${sub.quest_difficulty}`}>
-                            {sub.quest_difficulty}
+                            {sub.quest_difficulty === 'beginner' ? '⭐' : sub.quest_difficulty === 'intermediate' ? '⭐⭐' : '⭐⭐⭐'}
                           </span>
                         </td>
-                        <td style={{ color: 'var(--accent-gold)' }}>+{sub.quest_xp_reward}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>{formatDate(sub.submitted_at)}</td>
+                        <td style={{ color: 'var(--neon-orange)', fontFamily: 'Orbitron, sans-serif' }}>+{sub.quest_xp_reward}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{formatDate(sub.submitted_at)}</td>
                         <td>
-                          <button 
-                            className="btn btn-primary btn-small"
-                            onClick={() => {
-                              setSelectedSubmission(sub);
-                              setFeedback('');
-                            }}
-                          >
+                          <button className="btn btn-primary btn-small" onClick={() => { setSelectedSubmission(sub); setFeedback(''); }}>
                             Review
                           </button>
                         </td>
@@ -404,26 +390,20 @@ export default function GUIDEDashboard() {
           </div>
         )}
 
-        {/* Quests Tab */}
         {activeTab === 'quests' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                🔓 {unlockedCount} unlocked • 🔒 {lockedCount} locked
+                🔓 {unlockedCount} visible • 🔒 {lockedCount} hidden
               </div>
-              <button className="btn btn-primary" onClick={() => openQuestEditor()}>
-                + New Quest
-              </button>
+              <button className="btn btn-primary" onClick={() => openQuestEditor()}>+ New Quest</button>
             </div>
             
             <div className="alert alert-info" style={{ marginBottom: '1.5rem' }}>
               <span>💡</span>
               <div>
-                <strong>Quest Locking</strong>
-                <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                  Locked quests are hidden from your hero. Click the lock icon to toggle. 
-                  You can also set quests to auto-unlock when prerequisites are completed.
-                </p>
+                <strong>Quest Control</strong>
+                <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>🔒 = Hidden from Hero • 🔓 = Visible. Click to toggle.</p>
               </div>
             </div>
 
@@ -431,10 +411,10 @@ export default function GUIDEDashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: '50px' }}>Lock</th>
+                    <th style={{ width: '60px' }}>Visible</th>
                     <th>Quest</th>
                     <th>Category</th>
-                    <th>Difficulty</th>
+                    <th>Level</th>
                     <th>XP</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -442,18 +422,12 @@ export default function GUIDEDashboard() {
                 </thead>
                 <tbody>
                   {quests.map(quest => (
-                    <tr key={quest.id} style={{ opacity: quest.is_locked ? 0.7 : 1 }}>
+                    <tr key={quest.id} style={{ opacity: quest.is_locked ? 0.6 : 1 }}>
                       <td>
                         <button 
                           onClick={() => handleToggleLock(quest.id)}
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            cursor: 'pointer', 
-                            fontSize: '1.25rem',
-                            padding: '0.25rem'
-                          }}
-                          title={quest.is_locked ? 'Click to unlock' : 'Click to lock'}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', padding: '0.25rem' }}
+                          title={quest.is_locked ? 'Hidden - Click to show' : 'Visible - Click to hide'}
                         >
                           {quest.is_locked ? '🔒' : '🔓'}
                         </button>
@@ -461,26 +435,19 @@ export default function GUIDEDashboard() {
                       <td>
                         <div style={{ fontWeight: '500' }}>{quest.title}</div>
                         {quest.unlocksAfter && quest.unlocksAfter.length > 0 && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            Unlocks after: Quest {quest.unlocksAfter.join(', ')}
-                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Auto-unlocks after #{quest.unlocksAfter.join(', #')}</div>
                         )}
                       </td>
-                      <td>{quest.category}</td>
+                      <td style={{ textTransform: 'uppercase', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{quest.category}</td>
                       <td>
                         <span className={`badge badge-${quest.difficulty}`}>
-                          {quest.difficulty}
+                          {quest.difficulty === 'beginner' ? '⭐' : quest.difficulty === 'intermediate' ? '⭐⭐' : '⭐⭐⭐'}
                         </span>
                       </td>
-                      <td style={{ color: 'var(--accent-gold)' }}>+{quest.xp_reward}</td>
+                      <td style={{ color: 'var(--neon-orange)', fontFamily: 'Orbitron, sans-serif', fontSize: '0.9rem' }}>+{quest.xp_reward}</td>
                       <td>{getQuestStatusBadge(quest)}</td>
                       <td>
-                        <button 
-                          className="btn btn-ghost btn-small"
-                          onClick={() => openQuestEditor(quest)}
-                        >
-                          Edit
-                        </button>
+                        <button className="btn btn-ghost btn-small" onClick={() => openQuestEditor(quest)}>Edit</button>
                       </td>
                     </tr>
                   ))}
@@ -490,24 +457,21 @@ export default function GUIDEDashboard() {
           </div>
         )}
 
-        {/* 📜 History Tab */}
-        {activeTab === 'activity' && (
+        {activeTab === 'history' && (
           <div>
             {activities.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-state-icon">📋</div>
-                <p>No activity yet</p>
+                <div className="empty-state-icon">📜</div>
+                <p style={{ fontFamily: 'Orbitron, sans-serif' }}>No Activity Yet</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {activities.map(activity => (
                   <div key={activity.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem' }}>
-                    <div style={{ fontSize: '1.5rem' }}>{get📜 HistoryIcon(activity.action)}</div>
+                    <div style={{ fontSize: '1.5rem' }}>{getActivityIcon(activity.action)}</div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '500' }}>{get📜 HistoryLabel(activity)}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {formatDate(activity.created_at)}
-                      </div>
+                      <div style={{ fontWeight: '500' }}>{getActivityLabel(activity)}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatDate(activity.created_at)}</div>
                     </div>
                   </div>
                 ))}
@@ -517,38 +481,24 @@ export default function GUIDEDashboard() {
         )}
       </main>
 
-      {/* Review Modal */}
       {selectedSubmission && (
         <div className="modal-overlay" onClick={() => setSelectedSubmission(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="modal-title">Review: {selectedSubmission.quest_title}</h2>
+              <h2 className="modal-title">{selectedSubmission.quest_title}</h2>
               <button className="modal-close" onClick={() => setSelectedSubmission(null)}>×</button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                <span className={`badge badge-${selectedSubmission.quest_difficulty}`}>
-                  {selectedSubmission.quest_difficulty}
-                </span>
+                <span className={`badge badge-${selectedSubmission.quest_difficulty}`}>{selectedSubmission.quest_difficulty}</span>
                 <span className="quest-xp">+{selectedSubmission.quest_xp_reward} XP</span>
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>📎 Evidence Links</h3>
+                <h3 style={{ fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--neon-cyan)', fontFamily: 'Orbitron, sans-serif' }}>📎 Hero's Proof</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {selectedSubmission.evidenceLinks.map((link, i) => (
-                    <a 
-                      key={i} 
-                      href={link} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ 
-                        padding: '0.75rem', 
-                        background: 'var(--bg-dark)', 
-                        borderRadius: '8px',
-                        wordBreak: 'break-all'
-                      }}
-                    >
+                    <a key={i} href={link} target="_blank" rel="noopener noreferrer" style={{ padding: '0.75rem', background: 'var(--bg-dark)', borderRadius: '8px', wordBreak: 'break-all', border: '1px solid var(--border-color)' }}>
                       {link}
                     </a>
                   ))}
@@ -557,43 +507,26 @@ export default function GUIDEDashboard() {
 
               {selectedSubmission.reflection && (
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>💭 Reflection</h3>
-                  <p style={{ color: 'var(--text-secondary)', background: 'var(--bg-dark)', padding: '1rem', borderRadius: '8px' }}>
+                  <h3 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--neon-orange)' }}>💭 Hero's Notes</h3>
+                  <p style={{ color: 'var(--text-secondary)', background: 'var(--bg-dark)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                     {selectedSubmission.reflection}
                   </p>
                 </div>
               )}
 
               <div className="form-group">
-                <label>Feedback (optional)</label>
-                <textarea
-                  placeholder="Great work! / Here's what to improve..."
-                  value={feedback}
-                  onChange={e => setFeedback(e.target.value)}
-                />
+                <label>Your Feedback (Optional)</label>
+                <textarea placeholder="Nice work! / Here's what to improve..." value={feedback} onChange={e => setFeedback(e.target.value)} />
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                className="btn btn-ghost"
-                onClick={() => handleReview('reject')}
-                disabled={reviewing}
-              >
-                ↩️ Return for Revision
-              </button>
-              <button 
-                className="btn btn-success"
-                onClick={() => handleReview('approve')}
-                disabled={reviewing}
-              >
-                ✅ Approve (+{selectedSubmission.quest_xp_reward} XP)
-              </button>
+              <button className="btn btn-ghost" onClick={() => handleReview('reject')} disabled={reviewing}>🔄 Send Back</button>
+              <button className="btn btn-success" onClick={() => handleReview('approve')} disabled={reviewing}>✅ Approve (+{selectedSubmission.quest_xp_reward} XP)</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Quest Editor Modal */}
       {editingQuest && (
         <div className="modal-overlay" onClick={() => setEditingQuest(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
@@ -603,216 +536,93 @@ export default function GUIDEDashboard() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label>Title *</label>
-                <input
-                  type="text"
-                  value={questForm.title}
-                  onChange={e => setQuestForm({ ...questForm, title: e.target.value })}
-                  placeholder="Quest title"
-                />
+                <label>Quest Title</label>
+                <input type="text" value={questForm.title} onChange={e => setQuestForm({ ...questForm, title: e.target.value })} placeholder="Epic quest name..." />
               </div>
 
               <div className="form-group">
-                <label>Description *</label>
-                <textarea
-                  value={questForm.description}
-                  onChange={e => setQuestForm({ ...questForm, description: e.target.value })}
-                  placeholder="What is this quest about?"
-                />
+                <label>Description</label>
+                <textarea value={questForm.description} onChange={e => setQuestForm({ ...questForm, description: e.target.value })} placeholder="What does the Hero need to do?" />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                 <div className="form-group">
-                  <label>Category *</label>
-                  <input
-                    type="text"
-                    list="categories"
-                    value={questForm.category}
-                    onChange={e => setQuestForm({ ...questForm, category: e.target.value })}
-                    placeholder="Security, Digital Skills..."
-                  />
+                  <label>Category</label>
+                  <input type="text" list="categories" value={questForm.category} onChange={e => setQuestForm({ ...questForm, category: e.target.value })} placeholder="Security, Skills..." />
                   <datalist id="categories">
-                    {categories.map(cat => (
-                      <option key={cat} value={cat} />
-                    ))}
+                    {categories.map(cat => (<option key={cat} value={cat} />))}
                   </datalist>
                 </div>
-
                 <div className="form-group">
-                  <label>Difficulty *</label>
-                  <select
-                    value={questForm.difficulty}
-                    onChange={e => setQuestForm({ ...questForm, difficulty: e.target.value })}
-                  >
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
+                  <label>Difficulty</label>
+                  <select value={questForm.difficulty} onChange={e => setQuestForm({ ...questForm, difficulty: e.target.value })}>
+                    <option value="beginner">⭐ Easy</option>
+                    <option value="intermediate">⭐⭐ Medium</option>
+                    <option value="advanced">⭐⭐⭐ Hard</option>
                   </select>
                 </div>
-
                 <div className="form-group">
-                  <label>XP Reward *</label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="1000"
-                    value={questForm.xpReward}
-                    onChange={e => setQuestForm({ ...questForm, xpReward: parseInt(e.target.value) || 100 })}
-                  />
+                  <label>XP Reward</label>
+                  <input type="number" min="10" max="1000" value={questForm.xpReward} onChange={e => setQuestForm({ ...questForm, xpReward: parseInt(e.target.value) || 100 })} />
                 </div>
               </div>
 
-              {/* Locking Controls */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div className="form-group">
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={questForm.isLocked}
-                      onChange={e => setQuestForm({ ...questForm, isLocked: e.target.checked })}
-                      style={{ width: 'auto' }}
-                    />
-                    🔒 Quest is Locked
+                    <input type="checkbox" checked={questForm.isLocked} onChange={e => setQuestForm({ ...questForm, isLocked: e.target.checked })} style={{ width: 'auto' }} />
+                    🔒 Hidden from Hero
                   </label>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                    Locked quests are hidden from your hero
-                  </p>
                 </div>
-
                 <div className="form-group">
-                  <label>Auto-unlock after completing quest(s):</label>
-                  <select
-                    multiple
-                    value={questForm.unlocksAfter.map(String)}
-                    onChange={e => {
-                      const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                      setQuestForm({ ...questForm, unlocksAfter: selected });
-                    }}
-                    style={{ minHeight: '80px' }}
-                  >
-                    {quests.filter(q => q.id !== editingQuest.id).map(q => (
-                      <option key={q.id} value={q.id}>
-                        #{q.id}: {q.title}
-                      </option>
-                    ))}
+                  <label>Auto-unlock after:</label>
+                  <select multiple value={questForm.unlocksAfter.map(String)} onChange={e => { const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value)); setQuestForm({ ...questForm, unlocksAfter: selected }); }} style={{ minHeight: '80px' }}>
+                    {quests.filter(q => q.id !== editingQuest.id).map(q => (<option key={q.id} value={q.id}>#{q.id}: {q.title}</option>))}
                   </select>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                    Hold Ctrl/Cmd to select multiple
-                  </p>
                 </div>
               </div>
 
               <div className="form-group">
-                <label>Steps *</label>
+                <label>Mission Steps</label>
                 {questForm.steps.map((step, i) => (
                   <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span style={{ color: 'var(--text-muted)', padding: '0.75rem 0', minWidth: '1.5rem' }}>{i + 1}.</span>
-                    <input
-                      type="text"
-                      value={step}
-                      onChange={e => {
-                        const newSteps = [...questForm.steps];
-                        newSteps[i] = e.target.value;
-                        setQuestForm({ ...questForm, steps: newSteps });
-                      }}
-                      placeholder={`Step ${i + 1}`}
-                    />
-                    {questForm.steps.length > 1 && (
-                      <button
-                        className="btn btn-ghost btn-small"
-                        onClick={() => setQuestForm({ 
-                          ...questForm, 
-                          steps: questForm.steps.filter((_, idx) => idx !== i) 
-                        })}
-                      >
-                        ×
-                      </button>
-                    )}
+                    <span style={{ color: 'var(--neon-cyan)', padding: '0.75rem 0', minWidth: '1.5rem' }}>{i + 1}.</span>
+                    <input type="text" value={step} onChange={e => { const newSteps = [...questForm.steps]; newSteps[i] = e.target.value; setQuestForm({ ...questForm, steps: newSteps }); }} placeholder={`Step ${i + 1}`} />
+                    {questForm.steps.length > 1 && (<button className="btn btn-ghost btn-small" onClick={() => setQuestForm({ ...questForm, steps: questForm.steps.filter((_, idx) => idx !== i) })}>×</button>)}
                   </div>
                 ))}
-                <button
-                  className="btn btn-ghost btn-small"
-                  onClick={() => setQuestForm({ ...questForm, steps: [...questForm.steps, ''] })}
-                >
-                  + Add Step
-                </button>
+                <button className="btn btn-ghost btn-small" onClick={() => setQuestForm({ ...questForm, steps: [...questForm.steps, ''] })}>+ Add Step</button>
               </div>
 
               <div className="form-group">
                 <label>Why It Matters</label>
-                <textarea
-                  value={questForm.whyItMatters}
-                  onChange={e => setQuestForm({ ...questForm, whyItMatters: e.target.value })}
-                  placeholder="Explain the importance of this skill..."
-                  style={{ minHeight: '80px' }}
-                />
+                <textarea value={questForm.whyItMatters} onChange={e => setQuestForm({ ...questForm, whyItMatters: e.target.value })} placeholder="Why is this skill important?" style={{ minHeight: '80px' }} />
               </div>
 
               <div className="form-group">
                 <label>Safety Notes</label>
-                <textarea
-                  value={questForm.safetyNotes}
-                  onChange={e => setQuestForm({ ...questForm, safetyNotes: e.target.value })}
-                  placeholder="Any safety considerations?"
-                  style={{ minHeight: '60px' }}
-                />
+                <textarea value={questForm.safetyNotes} onChange={e => setQuestForm({ ...questForm, safetyNotes: e.target.value })} placeholder="Any warnings?" style={{ minHeight: '60px' }} />
               </div>
 
               <div className="form-group">
-                <label>Evidence Examples</label>
+                <label>Proof Examples</label>
                 {questForm.evidenceExamples.map((example, i) => (
                   <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input
-                      type="text"
-                      value={example}
-                      onChange={e => {
-                        const newExamples = [...questForm.evidenceExamples];
-                        newExamples[i] = e.target.value;
-                        setQuestForm({ ...questForm, evidenceExamples: newExamples });
-                      }}
-                      placeholder="Screenshot of..."
-                    />
-                    {questForm.evidenceExamples.length > 1 && (
-                      <button
-                        className="btn btn-ghost btn-small"
-                        onClick={() => setQuestForm({ 
-                          ...questForm, 
-                          evidenceExamples: questForm.evidenceExamples.filter((_, idx) => idx !== i) 
-                        })}
-                      >
-                        ×
-                      </button>
-                    )}
+                    <input type="text" value={example} onChange={e => { const newExamples = [...questForm.evidenceExamples]; newExamples[i] = e.target.value; setQuestForm({ ...questForm, evidenceExamples: newExamples }); }} placeholder="Screenshot of..." />
+                    {questForm.evidenceExamples.length > 1 && (<button className="btn btn-ghost btn-small" onClick={() => setQuestForm({ ...questForm, evidenceExamples: questForm.evidenceExamples.filter((_, idx) => idx !== i) })}>×</button>)}
                   </div>
                 ))}
-                <button
-                  className="btn btn-ghost btn-small"
-                  onClick={() => setQuestForm({ 
-                    ...questForm, 
-                    evidenceExamples: [...questForm.evidenceExamples, ''] 
-                  })}
-                >
-                  + Add Example
-                </button>
+                <button className="btn btn-ghost btn-small" onClick={() => setQuestForm({ ...questForm, evidenceExamples: [...questForm.evidenceExamples, ''] })}>+ Add Example</button>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setEditingQuest(null)}>
-                Cancel
-              </button>
-              <button 
-                className="btn btn-primary"
-                onClick={handleSaveQuest}
-                disabled={saving || !questForm.title || !questForm.description || !questForm.category}
-              >
-                {saving ? 'Saving...' : 'Save Quest'}
-              </button>
+              <button className="btn btn-ghost" onClick={() => setEditingQuest(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSaveQuest} disabled={saving || !questForm.title || !questForm.description || !questForm.category}>{saving ? 'Saving...' : 'Save Quest'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Hero URL Modal */}
       {showHeroUrl && (
         <div className="modal-overlay" onClick={() => setShowHeroUrl(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
@@ -821,41 +631,17 @@ export default function GUIDEDashboard() {
               <button className="modal-close" onClick={() => setShowHeroUrl(false)}>×</button>
             </div>
             <div className="modal-body">
-              <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
-                Share this link with your hero. They'll use it to access their quest board.
-              </p>
-              
+              <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>Send this link to your Hero so they can access their quest board.</p>
               <div className="alert alert-warning" style={{ marginBottom: '1rem' }}>
-                <span>⚠️</span>
-                <div>
-                  <strong>Security Note</strong>
-                  <p style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                    Share this link securely via Signal, iMessage, or in person. Don't send it via regular email or unencrypted messages.
-                  </p>
-                </div>
+                <span>🔒</span>
+                <div><strong>Security Tip</strong><p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Share via Signal, iMessage, or in person.</p></div>
               </div>
-
-              <div style={{ 
-                background: 'var(--bg-dark)', 
-                padding: '1rem', 
-                borderRadius: '8px',
-                wordBreak: 'break-all',
-                fontFamily: 'monospace',
-                fontSize: '0.85rem'
-              }}>
-                {typeof window !== 'undefined' && (
-                  `${window.location.origin}/enter/hero/[MENTEE_TOKEN]`
-                )}
+              <div style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: '8px', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem', border: '1px solid var(--border-color)' }}>
+                {typeof window !== 'undefined' && `${window.location.origin}/enter/mentee/[HERO_TOKEN]`}
               </div>
-
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
-                Replace [MENTEE_TOKEN] with your actual hero token from your environment variables.
-              </p>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => setShowHeroUrl(false)}>
-                Done
-              </button>
+              <button className="btn btn-primary" onClick={() => setShowHeroUrl(false)}>Got It</button>
             </div>
           </div>
         </div>
