@@ -110,7 +110,14 @@ export async function GET() {
     }
 
     // Get bonus events info
-    let bonusInfo = {
+    let bonusInfo: {
+      activeEvents: any[];
+      luckyQuest: any;
+      totalMultiplier: number;
+      bonusXp: number;
+      isWeekend: boolean;
+      firstQuestBonusAvailable: boolean;
+    } = {
       activeEvents: [],
       luckyQuest: null,
       totalMultiplier: 1.0,
