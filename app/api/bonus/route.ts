@@ -11,7 +11,7 @@ export async function GET() {
 
   try {
     const today = new Date();
-    const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'lowercase' });
+    const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     const todayDate = today.toISOString().split('T')[0];
 
     // Get active bonus events
