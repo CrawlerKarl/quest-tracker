@@ -4,6 +4,13 @@ import { getCurrentRole, checkRateLimit } from '@/lib/auth';
 import { sanitizeText } from '@/lib/sanitize';
 import { calculateLevel } from '@/lib/db';
 
+// Streak bonus calculation
+function getStreakBonus(streakDays: number): number {
+  if (streakDays >= 3) return 200;
+  if (streakDays >= 2) return 100;
+  return 0;
+}
+
 // POST approve or reject submission (mentor only)
 export async function POST(
   request: Request,
@@ -61,41 +68,8 @@ export async function POST(
       const statsResult = await sql`SELECT * FROM mentee_stats WHERE id = 1`;
       const currentStats = statsResult.rows[0];
       
-      // Calculate base XP
-      let baseXp = submission.xp_reward;
-      let bonusBreakdown: any[] = [];
-      
-      // Check for lucky quest bonus
-      if (submission.is_lucky_quest && submission.lucky_multiplier > 1) {
-        const luckyBonus = Math.round(baseXp * (submission.lucky_multiplier - 1));
-        bonusBreakdown.push({ type: 'lucky', label: '🍀 Lucky Quest', amount: luckyBonus });
-        baseXp = Math.round(baseXp * submission.lucky_multiplier);
-      }
-      
-      // Check for weekend bonus
-      const dayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-      const isWeekend = ['saturday', 'sunday'].includes(dayOfWeek);
-      if (isWeekend) {
-        const weekendBonus = baseXp; // Double = add another baseXp
-        bonusBreakdown.push({ type: 'weekend', label: '🎉 Weekend Warrior 2x', amount: weekendBonus });
-        baseXp *= 2;
-      }
-      
-      // Check for first quest of the day bonus
+      // Calculate streak first (needed for bonus)
       const today = new Date().toISOString().split('T')[0];
-      const isFirstQuestToday = currentStats.last_first_quest_date !== today;
-      if (isFirstQuestToday) {
-        bonusBreakdown.push({ type: 'first_daily', label: '☀️ First Quest of Day', amount: 25 });
-        baseXp += 25;
-      }
-      
-      const totalXpAwarded = baseXp;
-      const newXp = currentStats.total_xp + totalXpAwarded;
-      const newLevel = calculateLevel(newXp);
-      const leveledUp = newLevel > currentStats.level;
-      const newQuestsCompleted = currentStats.quests_completed + 1;
-      
-      // Update streak
       const lastStreakDate = currentStats.last_streak_date 
         ? new Date(currentStats.last_streak_date).toISOString().split('T')[0] 
         : null;
@@ -121,7 +95,46 @@ export async function POST(
           newStreak = 1;
         }
       }
+
+      // Calculate XP with all bonuses
+      let baseXp = submission.xp_reward;
+      let bonusBreakdown: any[] = [];
       
+      // Lucky quest bonus (1.5x)
+      if (submission.is_lucky_quest && submission.lucky_multiplier > 1) {
+        const luckyBonus = Math.round(baseXp * (submission.lucky_multiplier - 1));
+        bonusBreakdown.push({ type: 'lucky', label: '🍀 Lucky Quest', amount: luckyBonus });
+        baseXp = Math.round(baseXp * submission.lucky_multiplier);
+      }
+      
+      // Weekend bonus (2x)
+      const dayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+      const isWeekend = ['saturday', 'sunday'].includes(dayOfWeek);
+      if (isWeekend) {
+        const weekendBonus = baseXp;
+        bonusBreakdown.push({ type: 'weekend', label: '🎉 Weekend Warrior 2x', amount: weekendBonus });
+        baseXp *= 2;
+      }
+      
+      // Streak bonus (+100 for 2-day, +200 for 3+ day)
+      const streakBonus = getStreakBonus(newStreak);
+      if (streakBonus > 0) {
+        bonusBreakdown.push({ type: 'streak', label: `🔥 ${newStreak}-Day Streak`, amount: streakBonus });
+        baseXp += streakBonus;
+      }
+      
+      // First quest of day bonus
+      const isFirstQuestToday = currentStats.last_first_quest_date !== today;
+      if (isFirstQuestToday) {
+        bonusBreakdown.push({ type: 'first_daily', label: '☀️ First Quest of Day', amount: 25 });
+        baseXp += 25;
+      }
+      
+      const totalXpAwarded = baseXp;
+      const newXp = currentStats.total_xp + totalXpAwarded;
+      const newLevel = calculateLevel(newXp);
+      const leveledUp = newLevel > currentStats.level;
+      const newQuestsCompleted = currentStats.quests_completed + 1;
       const newLongestStreak = Math.max(currentStats.longest_streak || 0, newStreak);
       const questsTowardReward = (currentStats.quests_toward_reward || 0) + 1;
 
@@ -156,29 +169,19 @@ export async function POST(
       let achievementBonusXp = 0;
       for (const achievement of unlockedAchievements) {
         achievementBonusXp += achievement.xp_bonus || 0;
-        bonusBreakdown.push({ 
-          type: 'achievement', 
-          label: `🏆 ${achievement.name}`, 
-          amount: achievement.xp_bonus 
-        });
+        bonusBreakdown.push({ type: 'achievement', label: `🏆 ${achievement.name}`, amount: achievement.xp_bonus });
       }
       
       if (achievementBonusXp > 0) {
-        await sql`
-          UPDATE mentee_stats SET total_xp = total_xp + ${achievementBonusXp} WHERE id = 1
-        `;
+        await sql`UPDATE mentee_stats SET total_xp = total_xp + ${achievementBonusXp} WHERE id = 1`;
       }
 
-      // Rotate lucky quest (pick new one)
+      // Rotate lucky quest
       await sql`UPDATE quests SET is_lucky_quest = false WHERE is_lucky_quest = true`;
       await sql`
         UPDATE quests 
         SET is_lucky_quest = true, lucky_multiplier = 1.5
-        WHERE id = (
-          SELECT id FROM quests 
-          WHERE is_active = true AND is_locked = false 
-          ORDER BY RANDOM() LIMIT 1
-        )
+        WHERE id = (SELECT id FROM quests WHERE is_active = true AND is_locked = false ORDER BY RANDOM() LIMIT 1)
       `;
 
       // Log activity
@@ -190,7 +193,8 @@ export async function POST(
           bonusBreakdown,
           achievementsUnlocked: unlockedAchievements.map(a => a.name),
           leveledUp,
-          newLevel
+          newLevel,
+          newStreak
         })})
       `;
 
@@ -207,6 +211,7 @@ export async function POST(
         newLevel,
         leveledUp,
         newStreak,
+        streakBonus,
         achievementsUnlocked: unlockedAchievements,
         rewardEarned,
         celebration: {
@@ -273,10 +278,7 @@ async function checkAndAwardBadges(totalXp: number, level: number, questsComplet
 
       if (earned) {
         await sql`INSERT INTO earned_badges (badge_id) VALUES (${badge.id})`;
-        await sql`
-          INSERT INTO activity_log (action, details)
-          VALUES ('badge_earned', ${JSON.stringify({ badgeName: badge.name, badgeIcon: badge.icon })})
-        `;
+        await sql`INSERT INTO activity_log (action, details) VALUES ('badge_earned', ${JSON.stringify({ badgeName: badge.name, badgeIcon: badge.icon })})`;
       }
     }
   } catch (error) {
@@ -326,17 +328,13 @@ async function checkAndAwardAchievements(
             `;
             earned = parseInt(countResult.rows[0].count) >= 3;
           } else if (achievement.code === 'perfectionist') {
-            const rejectResult = await sql`
-              SELECT COUNT(*) as count FROM activity_log WHERE action = 'quest_rejected'
-            `;
+            const rejectResult = await sql`SELECT COUNT(*) as count FROM activity_log WHERE action = 'quest_rejected'`;
             earned = questsCompleted >= 5 && parseInt(rejectResult.rows[0].count) === 0;
           }
           break;
         case 'category_complete':
           if (achievement.code === 'security_master') {
-            const totalResult = await sql`
-              SELECT COUNT(*) as total FROM quests WHERE category = 'Security' AND is_active = true
-            `;
+            const totalResult = await sql`SELECT COUNT(*) as total FROM quests WHERE category = 'Security' AND is_active = true`;
             const completedResult = await sql`
               SELECT COUNT(*) as completed FROM quest_progress qp
               JOIN quests q ON qp.quest_id = q.id
@@ -349,14 +347,7 @@ async function checkAndAwardAchievements(
 
       if (earned) {
         await sql`INSERT INTO earned_achievements (achievement_id) VALUES (${achievement.id})`;
-        await sql`
-          INSERT INTO activity_log (action, details)
-          VALUES ('achievement_unlocked', ${JSON.stringify({ 
-            achievementName: achievement.name, 
-            achievementIcon: achievement.icon,
-            xpBonus: achievement.xp_bonus
-          })})
-        `;
+        await sql`INSERT INTO activity_log (action, details) VALUES ('achievement_unlocked', ${JSON.stringify({ achievementName: achievement.name, achievementIcon: achievement.icon, xpBonus: achievement.xp_bonus })})`;
         unlocked.push(achievement);
       }
     }
