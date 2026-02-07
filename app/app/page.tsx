@@ -969,12 +969,12 @@ export default function HeroApp() {
                     </div>
                   )}
                   <div className="form-group">
-                    <label>Proof Links</label>
+                    <label>Proof (links or description)</label>
                     {evidenceLinks.map((link, i) => (
                       <div key={i} className="link-input-row">
                         <input 
-                          type="url" 
-                          placeholder="https://..." 
+                          type="text" 
+                          placeholder="Link, screenshot, or describe what you did..." 
                           value={link} 
                           onChange={e => {
                             const newLinks = [...evidenceLinks];
@@ -991,7 +991,7 @@ export default function HeroApp() {
                       </div>
                     ))}
                     <button className="btn-add-link" onClick={() => setEvidenceLinks([...evidenceLinks, ''])}>
-                      + Add Link
+                      + Add Another
                     </button>
                   </div>
                   <div className="form-group">

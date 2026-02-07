@@ -42,6 +42,34 @@ export function sanitizeUrlArray(urls: unknown): string[] {
     .slice(0, 10); // Max 10 links
 }
 
+// Sanitize proof - can be URL or text description
+// Examples: "https://imgur.com/abc123" OR "Done via screenshare with mentor"
+export function sanitizeProof(input: string): string | null {
+  if (!input || typeof input !== 'string') return null;
+  
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > 1000) return trimmed.slice(0, 1000);
+  
+  // Remove potentially dangerous characters but allow most text
+  const sanitized = trimmed
+    .replace(/[<>]/g, '') // Remove angle brackets (prevent HTML injection)
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/data:/gi, ''); // Remove data: protocol
+  
+  return sanitized.length > 0 ? sanitized : null;
+}
+
+// Validate and sanitize an array of proof items (URLs or text)
+export function sanitizeProofArray(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  
+  return items
+    .map(item => sanitizeProof(String(item)))
+    .filter((item): item is string => item !== null && item.length > 0)
+    .slice(0, 10); // Max 10 items
+}
+
 // Sanitize JSON string array
 export function sanitizeStringArray(input: unknown, maxItems: number = 20, maxLength: number = 1000): string[] {
   if (!Array.isArray(input)) return [];
@@ -54,7 +82,7 @@ export function sanitizeStringArray(input: unknown, maxItems: number = 20, maxLe
 
 // Safety reminder for evidence submissions
 export const EVIDENCE_SAFETY_REMINDER = `
-⚠️ Before submitting evidence links, make sure they don't contain:
+⚠️ Before submitting proof, make sure it doesn't contain:
 • Passwords or login information
 • Your home address or school name
 • Student ID numbers or personal IDs
