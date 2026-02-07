@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getCurrentRole } from '@/lib/auth';
-import { xpForNextLevel } from '@/lib/db';
+import { xpForNextLevel, getRankFromXp, calculateRewardValue, getStreakBonus } from '@/lib/db';
+
+// Tier thresholds
+const TIER_THRESHOLDS: Record<string, number> = {
+  rookie: 0,
+  apprentice: 500,
+  pro: 1500,
+  elite: 3500,
+  legend: 7000,
+};
+
+const TIER_ORDER = ['rookie', 'apprentice', 'pro', 'elite', 'legend'];
 
 // GET mentee stats
 export async function GET() {
@@ -50,47 +61,60 @@ export async function GET() {
       }
     }
 
-    // Get quest counts
+    // Calculate current tier and check for new unlocks
+    const currentXp = stats.total_xp || 0;
+    let currentTier = 'rookie';
+    const unlockedTiers: string[] = [];
+    
+    for (const tier of TIER_ORDER) {
+      if (currentXp >= TIER_THRESHOLDS[tier]) {
+        currentTier = tier;
+        unlockedTiers.push(tier);
+      }
+    }
+
+    // Find next tier
+    const currentTierIndex = TIER_ORDER.indexOf(currentTier);
+    const nextTier = TIER_ORDER[currentTierIndex + 1] || null;
+    const nextTierXp = nextTier ? TIER_THRESHOLDS[nextTier] : null;
+    const xpToNextTier = nextTierXp ? nextTierXp - currentXp : 0;
+
+    // Count quests per tier
+    const tierQuestCounts = await sql`
+      SELECT tier, COUNT(*) as total,
+        COUNT(*) FILTER (WHERE id IN (SELECT quest_id FROM quest_progress WHERE status = 'completed')) as completed
+      FROM quests 
+      WHERE is_active = true
+      GROUP BY tier
+    `;
+
+    const questsByTier: Record<string, { total: number; completed: number }> = {};
+    for (const row of tierQuestCounts.rows) {
+      questsByTier[row.tier] = {
+        total: parseInt(row.total),
+        completed: parseInt(row.completed)
+      };
+    }
+
+    // Get quest counts by status (only for unlocked quests)
     const questCountsResult = await sql`
       SELECT 
         COUNT(*) FILTER (WHERE qp.status = 'in_progress') as in_progress,
         COUNT(*) FILTER (WHERE qp.status = 'submitted') as pending_review,
         COUNT(*) FILTER (WHERE qp.status = 'completed') as completed
       FROM quest_progress qp
+      JOIN quests q ON qp.quest_id = q.id
+      WHERE q.unlock_at_xp <= ${currentXp}
     `;
     const questCounts = questCountsResult.rows[0];
 
-    // Get completed quest IDs
-    const completedResult = await sql`
-      SELECT quest_id FROM quest_progress WHERE status = 'completed'
-    `;
-    const completedQuestIds = completedResult.rows.map(r => r.quest_id);
-
-    // Get all quests to calculate unlocked count
-    const allQuestsResult = await sql`
-      SELECT id, is_locked, unlocks_after FROM quests WHERE is_active = true
-    `;
-    
-    let unlockedCount = 0;
-    for (const quest of allQuestsResult.rows) {
-      if (!quest.is_locked) {
-        unlockedCount++;
-        continue;
-      }
-      const unlocksAfter = JSON.parse(quest.unlocks_after || '[]');
-      if (unlocksAfter.length > 0) {
-        const allPrereqsCompleted = unlocksAfter.every((reqId: number) => 
-          completedQuestIds.includes(reqId)
-        );
-        if (allPrereqsCompleted) unlockedCount++;
-      }
-    }
-
-    // Get earned badges
-    const badgesResult = await sql`
-      SELECT b.* FROM badges b
-      JOIN earned_badges eb ON b.id = eb.badge_id
-      ORDER BY eb.earned_at DESC
+    // Count available (unlocked and not started)
+    const availableResult = await sql`
+      SELECT COUNT(*) as count 
+      FROM quests q
+      WHERE q.is_active = true 
+        AND q.unlock_at_xp <= ${currentXp}
+        AND NOT EXISTS (SELECT 1 FROM quest_progress qp WHERE qp.quest_id = q.id)
     `;
 
     // Get achievements
@@ -105,96 +129,59 @@ export async function GET() {
       `;
       allAchievements = achievementsResult.rows;
       earnedAchievements = achievementsResult.rows.filter(a => a.earned_at !== null);
-    } catch (e) {
-      console.log('Achievements not available');
-    }
+    } catch (e) {}
 
-    // Get bonus events info
-    let bonusInfo: {
-      activeEvents: any[];
-      luckyQuest: any;
-      totalMultiplier: number;
-      bonusXp: number;
-      isWeekend: boolean;
-      firstQuestBonusAvailable: boolean;
-    } = {
-      activeEvents: [],
+    // Get bonus info
+    let bonusInfo: any = {
       luckyQuest: null,
       totalMultiplier: 1.0,
       bonusXp: 0,
       isWeekend: false,
-      firstQuestBonusAvailable: true
+      firstQuestBonusAvailable: true,
+      streakBonus: getStreakBonus(currentStreak)
     };
 
     try {
       const dayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
       const isWeekend = ['saturday', 'sunday'].includes(dayOfWeek);
       
-      // Get lucky quest
       const luckyResult = await sql`
-        SELECT id, title, xp_reward, lucky_multiplier, category, difficulty
+        SELECT id, title, xp_reward, lucky_multiplier, category, difficulty, tier
         FROM quests WHERE is_lucky_quest = true AND is_active = true LIMIT 1
       `;
       
-      // Check first quest bonus
       const firstQuestAvailable = stats.last_first_quest_date !== today;
 
       bonusInfo = {
-        activeEvents: [],
         luckyQuest: luckyResult.rows[0] || null,
         totalMultiplier: isWeekend ? 2.0 : 1.0,
         bonusXp: firstQuestAvailable ? 25 : 0,
         isWeekend,
-        firstQuestBonusAvailable: firstQuestAvailable
+        firstQuestBonusAvailable: firstQuestAvailable,
+        streakBonus: getStreakBonus(currentStreak)
       };
-    } catch (e) {
-      console.log('Bonus info not available');
-    }
+    } catch (e) {}
 
-    // Calculate XP progress
-    const xpProgress = xpForNextLevel(stats.total_xp);
-
-    // Calculate available quests
-    const inProgressCount = parseInt(questCounts.in_progress) || 0;
-    const pendingCount = parseInt(questCounts.pending_review) || 0;
-    const completedCount = parseInt(questCounts.completed) || 0;
-    const availableCount = unlockedCount - inProgressCount - pendingCount - completedCount;
-
-    // Reward progress
-    const questsTowardReward = stats.quests_toward_reward || completedCount;
-    const rewardProgress = {
-      current: questsTowardReward % 10,
-      target: 10,
-      rewardName: '$30 Steam Credit',
-      rewardIcon: '🎮',
-      rewardsClaimed: stats.rewards_claimed || 0,
-      progress: ((questsTowardReward % 10) / 10) * 100
-    };
-
-    // Get suggested quest (prioritize lucky quest if available)
+    // Get suggested quest (from current tier, not started)
     let suggestedQuest = null;
     try {
-      // First try lucky quest
-      if (bonusInfo.luckyQuest) {
+      // Prioritize lucky quest if in unlocked tier
+      if (bonusInfo.luckyQuest && TIER_THRESHOLDS[bonusInfo.luckyQuest.tier] <= currentXp) {
         const luckyProgressResult = await sql`
           SELECT id FROM quest_progress WHERE quest_id = ${bonusInfo.luckyQuest.id}
         `;
         if (luckyProgressResult.rows.length === 0) {
-          suggestedQuest = {
-            ...bonusInfo.luckyQuest,
-            isLucky: true
-          };
+          suggestedQuest = { ...bonusInfo.luckyQuest, isLucky: true };
         }
       }
       
-      // Fall back to regular suggestion
       if (!suggestedQuest) {
         const suggestedResult = await sql`
-          SELECT q.id, q.title, q.xp_reward, q.difficulty, q.category
+          SELECT q.id, q.title, q.xp_reward, q.difficulty, q.category, q.tier
           FROM quests q
-          LEFT JOIN quest_progress qp ON q.id = qp.quest_id
-          WHERE q.is_active = true AND q.is_locked = false
-            AND (qp.id IS NULL OR qp.status IS NULL)
+          WHERE q.is_active = true 
+            AND q.unlock_at_xp <= ${currentXp}
+            AND NOT EXISTS (SELECT 1 FROM quest_progress qp WHERE qp.quest_id = q.id)
           ORDER BY q.sort_order ASC
           LIMIT 1
         `;
@@ -202,13 +189,23 @@ export async function GET() {
           suggestedQuest = suggestedResult.rows[0];
         }
       }
-    } catch (e) {
-      console.log('Could not get suggested quest');
-    }
+    } catch (e) {}
+
+    // Calculate XP and rank progress
+    const xpProgress = xpForNextLevel(currentXp);
+    const rankInfo = getRankFromXp(currentXp);
+    const rewardInfo = calculateRewardValue(currentXp, stats.rewards_claimed || 0);
+
+    // Get earned badges
+    const badgesResult = await sql`
+      SELECT b.* FROM badges b
+      JOIN earned_badges eb ON b.id = eb.badge_id
+      ORDER BY eb.earned_at DESC
+    `;
 
     return NextResponse.json({
       stats: {
-        totalXp: stats.total_xp,
+        totalXp: currentXp,
         level: stats.level,
         questsCompleted: stats.quests_completed,
         currentStreak: currentStreak,
@@ -217,15 +214,24 @@ export async function GET() {
         streakFreezeAvailable: stats.streak_freeze_available,
       },
       streakStatus,
+      streakBonus: getStreakBonus(currentStreak),
       xpProgress,
+      rankInfo,
+      rewardInfo,
       questCounts: {
-        inProgress: inProgressCount,
-        pendingReview: pendingCount,
-        completed: completedCount,
-        total: unlockedCount,
-        available: Math.max(0, availableCount),
+        inProgress: parseInt(questCounts.in_progress) || 0,
+        pendingReview: parseInt(questCounts.pending_review) || 0,
+        completed: parseInt(questCounts.completed) || 0,
+        available: parseInt(availableResult.rows[0].count) || 0,
       },
-      rewardProgress,
+      tierInfo: {
+        currentTier,
+        unlockedTiers,
+        nextTier,
+        nextTierXp,
+        xpToNextTier,
+        questsByTier,
+      },
       bonusInfo,
       suggestedQuest,
       earnedBadges: badgesResult.rows,
