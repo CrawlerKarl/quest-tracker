@@ -1,7 +1,51 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getCurrentRole, checkRateLimit } from '@/lib/auth';
-import { sanitizeText, sanitizeStringArray, sanitizeProofArray, EVIDENCE_SAFETY_REMINDER } from '@/lib/sanitize';
+
+// ============================================
+// INLINE SANITIZATION FUNCTIONS
+// ============================================
+
+function sanitizeText(input: string, maxLength: number = 5000): string {
+  if (!input || typeof input !== 'string') return '';
+  return input.slice(0, maxLength).replace(/[<>]/g, '').trim();
+}
+
+function sanitizeStringArray(input: unknown, maxItems: number = 20, maxLength: number = 1000): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .slice(0, maxItems)
+    .map(item => sanitizeText(String(item), maxLength))
+    .filter(item => item.length > 0);
+}
+
+// Sanitize proof - can be URL or text description
+function sanitizeProof(input: string): string | null {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > 1000) return trimmed.slice(0, 1000);
+  
+  const sanitized = trimmed
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/data:/gi, '');
+  
+  return sanitized.length > 0 ? sanitized : null;
+}
+
+// Accept text OR URLs for proof
+function sanitizeProofArray(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map(item => sanitizeProof(String(item)))
+    .filter((item): item is string => item !== null && item.length > 0)
+    .slice(0, 10);
+}
+
+// ============================================
+// API ROUTES
+// ============================================
 
 // GET single quest with progress
 export async function GET(
@@ -42,7 +86,7 @@ export async function GET(
       } : null,
     };
 
-    return NextResponse.json({ quest, safetyReminder: EVIDENCE_SAFETY_REMINDER });
+    return NextResponse.json({ quest });
   } catch (error) {
     console.error('Error fetching quest:', error);
     return NextResponse.json({ error: 'Failed to fetch quest' }, { status: 500 });
@@ -155,6 +199,8 @@ export async function POST(
     const body = await request.json();
     const action = body.action; // 'start' or 'submit'
 
+    console.log('Quest action:', action, 'for quest:', questId);
+
     // Check quest exists
     const questResult = await sql`SELECT * FROM quests WHERE id = ${questId}`;
     if (questResult.rows.length === 0) {
@@ -178,10 +224,14 @@ export async function POST(
       `;
 
       // Log activity
-      await sql`
-        INSERT INTO activity_log (action, quest_id)
-        VALUES ('quest_started', ${questId})
-      `;
+      try {
+        await sql`
+          INSERT INTO activity_log (action, quest_id)
+          VALUES ('quest_started', ${questId})
+        `;
+      } catch (e) {
+        console.log('Activity log insert failed (non-critical)');
+      }
 
       // Update last activity
       await sql`UPDATE mentee_stats SET last_activity_at = NOW() WHERE id = 1`;
@@ -190,14 +240,25 @@ export async function POST(
     }
 
     if (action === 'submit') {
-      if (!existingProgress || existingProgress.status === 'completed') {
-        return NextResponse.json({ error: 'Cannot submit for this quest' }, { status: 400 });
+      console.log('Submit action - existing progress:', existingProgress);
+      
+      if (!existingProgress) {
+        return NextResponse.json({ error: 'Quest not started yet' }, { status: 400 });
+      }
+      
+      if (existingProgress.status === 'completed') {
+        return NextResponse.json({ error: 'Quest already completed' }, { status: 400 });
       }
 
-      // Use sanitizeProofArray instead of sanitizeUrlArray
-      // This allows text like "Done via screenshare" as well as URLs
+      if (existingProgress.status === 'submitted') {
+        return NextResponse.json({ error: 'Quest already submitted, awaiting review' }, { status: 400 });
+      }
+
+      // Use sanitizeProofArray - accepts text OR URLs
       const evidenceLinks = sanitizeProofArray(body.evidenceLinks);
       const reflection = sanitizeText(body.reflection || '', 2000);
+
+      console.log('Evidence links after sanitize:', evidenceLinks);
 
       if (evidenceLinks.length === 0) {
         return NextResponse.json({ error: 'At least one proof item is required' }, { status: 400 });
@@ -214,14 +275,19 @@ export async function POST(
       `;
 
       // Log activity
-      await sql`
-        INSERT INTO activity_log (action, quest_id)
-        VALUES ('quest_submitted', ${questId})
-      `;
+      try {
+        await sql`
+          INSERT INTO activity_log (action, quest_id)
+          VALUES ('quest_submitted', ${questId})
+        `;
+      } catch (e) {
+        console.log('Activity log insert failed (non-critical)');
+      }
 
       // Update last activity
       await sql`UPDATE mentee_stats SET last_activity_at = NOW() WHERE id = 1`;
 
+      console.log('Submit successful');
       return NextResponse.json({ success: true, status: 'submitted' });
     }
 
@@ -249,7 +315,6 @@ export async function DELETE(
   }
 
   try {
-    // Soft delete by setting is_active to false
     await sql`
       UPDATE quests SET is_active = false, updated_at = NOW() WHERE id = ${questId}
     `;
