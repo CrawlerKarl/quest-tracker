@@ -209,7 +209,7 @@ export default function HeroApp() {
   const completedQuests = quests.filter(q => q.progress?.status === 'completed');
   const submittedQuests = quests.filter(q => q.progress?.status === 'submitted');
   const selectedQuests = quests.filter(q => q.progress?.is_selected && q.progress?.status !== 'completed' && q.progress?.status !== 'submitted');
-  const availableToSelect = quests.filter(q => !q.progress && q.progress?.status !== 'completed');
+  const availableToSelect = quests.filter(q => !q.progress);
   
   // Current active quests (selected + submitted, max 3 selected)
   const activeQuests = [...selectedQuests, ...submittedQuests];
