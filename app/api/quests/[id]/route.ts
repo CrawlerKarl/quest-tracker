@@ -19,7 +19,6 @@ function sanitizeStringArray(input: unknown, maxItems: number = 20, maxLength: n
     .filter(item => item.length > 0);
 }
 
-// Sanitize proof - can be URL or text description
 function sanitizeProof(input: string): string | null {
   if (!input || typeof input !== 'string') return null;
   const trimmed = input.trim();
@@ -34,7 +33,6 @@ function sanitizeProof(input: string): string | null {
   return sanitized.length > 0 ? sanitized : null;
 }
 
-// Accept text OR URLs for proof
 function sanitizeProofArray(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
   return items
@@ -174,7 +172,7 @@ export async function PUT(
   }
 }
 
-// POST start quest or submit evidence (mentee only)
+// POST select quest, or submit evidence (mentee only)
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
@@ -185,7 +183,6 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Rate limit submissions
   if (!checkRateLimit('mentee-action', 30, 60000)) {
     return NextResponse.json({ error: 'Too many requests. Please wait a moment.' }, { status: 429 });
   }
@@ -197,9 +194,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const action = body.action; // 'start' or 'submit'
-
-    console.log('Quest action:', action, 'for quest:', questId);
+    const action = body.action; // 'select', 'submit', or 'deselect'
 
     // Check quest exists
     const questResult = await sql`SELECT * FROM quests WHERE id = ${questId}`;
@@ -213,37 +208,64 @@ export async function POST(
     `;
     const existingProgress = progressResult.rows[0];
 
-    if (action === 'start') {
+    // ============================================
+    // ACTION: SELECT (add quest to active list)
+    // ============================================
+    if (action === 'select') {
+      // Check if already selected or in progress
       if (existingProgress) {
-        return NextResponse.json({ error: 'Quest already started' }, { status: 400 });
+        return NextResponse.json({ error: 'Quest already selected or completed' }, { status: 400 });
       }
 
+      // Check if user already has 3 selected quests
+      const selectedCount = await sql`
+        SELECT COUNT(*) as count FROM quest_progress 
+        WHERE is_selected = true AND status NOT IN ('completed', 'submitted')
+      `;
+      
+      if (parseInt(selectedCount.rows[0].count) >= 3) {
+        return NextResponse.json({ error: 'You already have 3 active quests. Complete or submit one first.' }, { status: 400 });
+      }
+
+      // Create progress entry with is_selected = true
       await sql`
-        INSERT INTO quest_progress (quest_id, status, started_at)
-        VALUES (${questId}, 'in_progress', NOW())
+        INSERT INTO quest_progress (quest_id, status, is_selected, started_at)
+        VALUES (${questId}, 'in_progress', true, NOW())
       `;
 
       // Log activity
       try {
         await sql`
           INSERT INTO activity_log (action, quest_id)
-          VALUES ('quest_started', ${questId})
+          VALUES ('quest_selected', ${questId})
         `;
       } catch (e) {
         console.log('Activity log insert failed (non-critical)');
       }
 
-      // Update last activity
-      await sql`UPDATE mentee_stats SET last_activity_at = NOW() WHERE id = 1`;
-
-      return NextResponse.json({ success: true, status: 'in_progress' });
+      return NextResponse.json({ success: true, status: 'selected' });
     }
 
+    // ============================================
+    // ACTION: DESELECT (remove quest from active list)
+    // ============================================
+    if (action === 'deselect') {
+      if (!existingProgress || existingProgress.status === 'completed') {
+        return NextResponse.json({ error: 'Cannot deselect this quest' }, { status: 400 });
+      }
+
+      // Delete the progress entry
+      await sql`DELETE FROM quest_progress WHERE quest_id = ${questId}`;
+
+      return NextResponse.json({ success: true, status: 'deselected' });
+    }
+
+    // ============================================
+    // ACTION: SUBMIT (submit proof for review)
+    // ============================================
     if (action === 'submit') {
-      console.log('Submit action - existing progress:', existingProgress);
-      
       if (!existingProgress) {
-        return NextResponse.json({ error: 'Quest not started yet' }, { status: 400 });
+        return NextResponse.json({ error: 'Quest not selected yet' }, { status: 400 });
       }
       
       if (existingProgress.status === 'completed') {
@@ -254,11 +276,8 @@ export async function POST(
         return NextResponse.json({ error: 'Quest already submitted, awaiting review' }, { status: 400 });
       }
 
-      // Use sanitizeProofArray - accepts text OR URLs
       const evidenceLinks = sanitizeProofArray(body.evidenceLinks);
       const reflection = sanitizeText(body.reflection || '', 2000);
-
-      console.log('Evidence links after sanitize:', evidenceLinks);
 
       if (evidenceLinks.length === 0) {
         return NextResponse.json({ error: 'At least one proof item is required' }, { status: 400 });
@@ -287,8 +306,21 @@ export async function POST(
       // Update last activity
       await sql`UPDATE mentee_stats SET last_activity_at = NOW() WHERE id = 1`;
 
-      console.log('Submit successful');
       return NextResponse.json({ success: true, status: 'submitted' });
+    }
+
+    // Legacy support: 'start' action (same as select)
+    if (action === 'start') {
+      if (existingProgress) {
+        return NextResponse.json({ error: 'Quest already started' }, { status: 400 });
+      }
+
+      await sql`
+        INSERT INTO quest_progress (quest_id, status, is_selected, started_at)
+        VALUES (${questId}, 'in_progress', true, NOW())
+      `;
+
+      return NextResponse.json({ success: true, status: 'in_progress' });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

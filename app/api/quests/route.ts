@@ -2,24 +2,53 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getCurrentRole } from '@/lib/auth';
 
-// XP thresholds for each tier
-const TIER_THRESHOLDS: Record<string, number> = {
-  rookie: 0,
-  apprentice: 500,
-  pro: 1500,
-  elite: 3500,
-  legend: 7000,
-};
+// Helper to set daily lucky quest (excluding completed quests)
+async function updateDailyLuckyQuest() {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Check if we already set lucky quest today
+  const currentLucky = await sql`
+    SELECT id, updated_at FROM quests 
+    WHERE is_lucky_quest = true 
+    LIMIT 1
+  `;
+  
+  if (currentLucky.rows.length > 0) {
+    const lastUpdate = currentLucky.rows[0].updated_at;
+    const lastUpdateDate = new Date(lastUpdate).toISOString().split('T')[0];
+    
+    // If already updated today, skip
+    if (lastUpdateDate === today) {
+      return;
+    }
+  }
+  
+  // Clear all lucky quest flags
+  await sql`UPDATE quests SET is_lucky_quest = false WHERE is_lucky_quest = true`;
+  
+  // Pick a random quest that is:
+  // - Active
+  // - NOT completed
+  // - Available (has no progress or is selected but not completed)
+  const eligibleQuests = await sql`
+    SELECT q.id FROM quests q
+    LEFT JOIN quest_progress qp ON q.id = qp.quest_id
+    WHERE q.is_active = true 
+    AND (qp.status IS NULL OR qp.status NOT IN ('completed', 'submitted'))
+    ORDER BY RANDOM()
+    LIMIT 1
+  `;
+  
+  if (eligibleQuests.rows.length > 0) {
+    await sql`
+      UPDATE quests 
+      SET is_lucky_quest = true, updated_at = NOW()
+      WHERE id = ${eligibleQuests.rows[0].id}
+    `;
+  }
+}
 
-const TIER_INFO: Record<string, { icon: string; name: string }> = {
-  rookie: { icon: '🌱', name: 'ROOKIE' },
-  apprentice: { icon: '⚡', name: 'APPRENTICE' },
-  pro: { icon: '🔥', name: 'PRO' },
-  elite: { icon: '💎', name: 'ELITE' },
-  legend: { icon: '👑', name: 'LEGEND' },
-};
-
-// GET all quests for the authenticated user
+// GET all quests with progress
 export async function GET() {
   const role = getCurrentRole();
   
@@ -28,20 +57,11 @@ export async function GET() {
   }
 
   try {
-    // Get current XP to determine unlocked tiers
-    const statsResult = await sql`SELECT total_xp FROM mentee_stats WHERE id = 1`;
-    const currentXp = statsResult.rows[0]?.total_xp || 0;
+    // Update lucky quest daily (excludes completed quests)
+    await updateDailyLuckyQuest();
 
-    // Determine which tiers are unlocked
-    const unlockedTiers: string[] = [];
-    for (const [tier, threshold] of Object.entries(TIER_THRESHOLDS)) {
-      if (currentXp >= threshold) {
-        unlockedTiers.push(tier);
-      }
-    }
-
-    // Get all quests with their progress
-    const questsResult = await sql`
+    // Get all active quests with their progress
+    const result = await sql`
       SELECT 
         q.*,
         qp.id as progress_id,
@@ -49,107 +69,63 @@ export async function GET() {
         qp.evidence_links,
         qp.reflection,
         qp.mentor_feedback,
+        qp.is_selected,
         qp.started_at,
         qp.submitted_at,
         qp.completed_at
       FROM quests q
       LEFT JOIN quest_progress qp ON q.id = qp.quest_id
       WHERE q.is_active = true
-      ORDER BY q.sort_order ASC
+      ORDER BY 
+        CASE 
+          WHEN qp.status = 'submitted' THEN 1
+          WHEN qp.is_selected = true THEN 2
+          WHEN qp.status = 'completed' THEN 4
+          ELSE 3
+        END,
+        q.sort_order ASC,
+        q.id ASC
     `;
 
-    // Get reactions for completed quests
-    const reactionsResult = await sql`
-      SELECT qr.quest_progress_id, qr.reaction
-      FROM quest_reactions qr
-      JOIN quest_progress qp ON qr.quest_progress_id = qp.id
-      WHERE qp.status = 'completed'
-    `;
-    
-    const reactionsByProgress: Record<number, string[]> = {};
-    for (const row of reactionsResult.rows) {
-      if (!reactionsByProgress[row.quest_progress_id]) {
-        reactionsByProgress[row.quest_progress_id] = [];
-      }
-      reactionsByProgress[row.quest_progress_id].push(row.reaction);
-    }
+    const quests = result.rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      difficulty: row.difficulty,
+      xp_reward: row.xp_reward,
+      steps: JSON.parse(row.steps || '[]'),
+      why_it_matters: row.why_it_matters,
+      safety_notes: row.safety_notes,
+      evidenceExamples: JSON.parse(row.evidence_examples || '[]'),
+      is_active: row.is_active,
+      is_locked: row.is_locked,
+      is_lucky_quest: row.is_lucky_quest,
+      lucky_multiplier: row.lucky_multiplier || 1.5,
+      tier: row.tier || 'rookie',
+      unlock_at_xp: row.unlock_at_xp || 0,
+      sort_order: row.sort_order,
+      progress: row.progress_id ? {
+        id: row.progress_id,
+        status: row.status,
+        evidence_links: row.evidence_links,
+        reflection: row.reflection,
+        mentor_feedback: row.mentor_feedback,
+        is_selected: row.is_selected,
+        started_at: row.started_at,
+        submitted_at: row.submitted_at,
+        completed_at: row.completed_at,
+      } : null,
+    }));
 
-    // Process quests - unlock based on XP tier
-    const quests = questsResult.rows.map(quest => {
-      const tier = quest.tier || 'rookie';
-      const unlockXp = quest.unlock_at_xp || TIER_THRESHOLDS[tier] || 0;
-      const isUnlocked = currentXp >= unlockXp;
-      
-      // For mentors, show all quests; for mentees, respect lock status
-      const showQuest = role === 'mentor' || isUnlocked;
-      
-      if (!showQuest) {
-        return null; // Filter out locked quests for mentee view
-      }
-
-      return {
-        id: quest.id,
-        title: quest.title,
-        description: quest.description,
-        category: quest.category,
-        difficulty: quest.difficulty,
-        xp_reward: quest.xp_reward,
-        steps: JSON.parse(quest.steps || '[]'),
-        why_it_matters: quest.why_it_matters,
-        safety_notes: quest.safety_notes,
-        evidenceExamples: JSON.parse(quest.evidence_examples || '[]'),
-        is_active: quest.is_active,
-        is_locked: !isUnlocked,
-        is_lucky_quest: quest.is_lucky_quest,
-        lucky_multiplier: quest.lucky_multiplier,
-        tier: tier,
-        unlock_at_xp: unlockXp,
-        sort_order: quest.sort_order,
-        progress: quest.progress_id ? {
-          id: quest.progress_id,
-          status: quest.status,
-          evidence_links: quest.evidence_links,
-          reflection: quest.reflection,
-          mentor_feedback: quest.mentor_feedback,
-          started_at: quest.started_at,
-          submitted_at: quest.submitted_at,
-          completed_at: quest.completed_at,
-        } : null,
-        reactions: quest.progress_id ? reactionsByProgress[quest.progress_id] || [] : [],
-      };
-    }).filter(Boolean);
-
-    // Calculate locked quests info (for preview)
-    const lockedQuestsPreview = await sql`
-      SELECT tier, COUNT(*) as count, MIN(unlock_at_xp) as unlock_xp
-      FROM quests 
-      WHERE is_active = true AND unlock_at_xp > ${currentXp}
-      GROUP BY tier
-      ORDER BY MIN(unlock_at_xp) ASC
-    `;
-
-    const nextTierInfo = lockedQuestsPreview.rows.length > 0 ? {
-      tier: lockedQuestsPreview.rows[0].tier,
-      questCount: parseInt(lockedQuestsPreview.rows[0].count),
-      unlockXp: parseInt(lockedQuestsPreview.rows[0].unlock_xp),
-      xpNeeded: parseInt(lockedQuestsPreview.rows[0].unlock_xp) - currentXp,
-      tierInfo: TIER_INFO[lockedQuestsPreview.rows[0].tier] || { icon: '🔒', name: 'LOCKED' }
-    } : null;
-
-    return NextResponse.json({ 
-      quests,
-      currentXp,
-      unlockedTiers,
-      nextTierInfo,
-      tierInfo: TIER_INFO,
-    });
+    return NextResponse.json({ quests });
   } catch (error) {
     console.error('Error fetching quests:', error);
     return NextResponse.json({ error: 'Failed to fetch quests' }, { status: 500 });
   }
 }
 
-// POST - Create a new quest (mentor only)
+// POST create new quest (mentor only)
 export async function POST(request: Request) {
   const role = getCurrentRole();
   
@@ -160,30 +136,34 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
+    const title = body.title?.slice(0, 255) || 'New Quest';
+    const description = body.description?.slice(0, 2000) || '';
+    const category = body.category?.slice(0, 100) || 'General';
+    const difficulty = ['beginner', 'intermediate', 'advanced'].includes(body.difficulty) 
+      ? body.difficulty 
+      : 'beginner';
+    const xpReward = Math.min(Math.max(parseInt(body.xpReward) || 100, 10), 1000);
+    const steps = JSON.stringify(body.steps || []);
+    const whyItMatters = body.whyItMatters?.slice(0, 1000) || '';
+    const safetyNotes = body.safetyNotes?.slice(0, 1000) || '';
+    const evidenceExamples = JSON.stringify(body.evidenceExamples || []);
+    const tier = body.tier || 'rookie';
+    const unlockAtXp = parseInt(body.unlockAtXp) || 0;
+
     const result = await sql`
       INSERT INTO quests (
         title, description, category, difficulty, xp_reward,
         steps, why_it_matters, safety_notes, evidence_examples,
-        is_locked, tier, unlock_at_xp, sort_order
+        tier, unlock_at_xp, is_active, is_locked
       ) VALUES (
-        ${body.title},
-        ${body.description},
-        ${body.category},
-        ${body.difficulty},
-        ${body.xpReward || 100},
-        ${JSON.stringify(body.steps || [])},
-        ${body.whyItMatters || ''},
-        ${body.safetyNotes || ''},
-        ${JSON.stringify(body.evidenceExamples || [])},
-        ${body.isLocked !== false},
-        ${body.tier || 'rookie'},
-        ${body.unlockAtXp || 0},
-        ${body.sortOrder || 999}
+        ${title}, ${description}, ${category}, ${difficulty}, ${xpReward},
+        ${steps}, ${whyItMatters}, ${safetyNotes}, ${evidenceExamples},
+        ${tier}, ${unlockAtXp}, true, false
       )
-      RETURNING id
+      RETURNING *
     `;
 
-    return NextResponse.json({ success: true, questId: result.rows[0].id });
+    return NextResponse.json({ quest: result.rows[0] });
   } catch (error) {
     console.error('Error creating quest:', error);
     return NextResponse.json({ error: 'Failed to create quest' }, { status: 500 });
